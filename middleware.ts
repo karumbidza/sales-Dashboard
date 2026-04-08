@@ -1,29 +1,47 @@
-// middleware.ts — API key authentication for all /api/* routes
 import { NextRequest, NextResponse } from 'next/server';
 
-export function middleware(req: NextRequest) {
+const COOKIE = 'fsi_session';
+const LOGIN  = '/login';
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Only protect API routes
-  if (!pathname.startsWith('/api/')) return NextResponse.next();
-
-  const apiKey = req.headers.get('x-api-key');
-  const cookieKey = req.cookies.get('api_key')?.value;
-  const secret = process.env.API_SECRET_KEY;
-
-  if (!secret) {
-    // Fail closed — if the secret isn't configured, deny all API access
-    console.error('API_SECRET_KEY environment variable is not set');
-    return NextResponse.json({ error: 'Service misconfigured' }, { status: 503 });
+  // Always allow login page and auth API
+  if (pathname.startsWith(LOGIN) || pathname.startsWith('/api/auth')) {
+    return NextResponse.next();
   }
 
-  if (apiKey !== secret && cookieKey !== secret) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const sessionId = req.cookies.get(COOKIE)?.value;
+
+  if (!sessionId) {
+    return redirect(req, pathname);
+  }
+
+  // Validate session against DB via internal API call
+  const verifyUrl = new URL('/api/auth', req.url);
+  const verifyRes = await fetch(verifyUrl, {
+    headers: { cookie: `${COOKIE}=${sessionId}` },
+  });
+
+  if (!verifyRes.ok) {
+    return redirect(req, pathname);
   }
 
   return NextResponse.next();
 }
 
+function redirect(req: NextRequest, from: string) {
+  // API calls → 401
+  if (from.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  // Browser → redirect to login
+  const url = req.nextUrl.clone();
+  url.pathname = LOGIN;
+  url.searchParams.set('next', from);
+  return NextResponse.redirect(url);
+}
+
 export const config = {
-  matcher: '/api/:path*',
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

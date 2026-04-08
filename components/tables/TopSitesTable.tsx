@@ -12,19 +12,16 @@ interface Props {
   dateTo?: string;
 }
 
+import { fmtVsBudget, vsBudgetBadgeClass } from '@/lib/formatters';
+
 function fmtVol(n: number)  { return n?.toLocaleString('en', { maximumFractionDigits: 0 }) ?? '—'; }
 function fmtPct(n: number | null) { return n != null ? `${n.toFixed(1)}%` : '—'; }
 
 function PctBadge({ value }: { value: number | null }) {
   if (value == null) return <span className="text-gray-300">—</span>;
-  const cls = value >= 100
-    ? 'bg-emerald-100 text-emerald-700'
-    : value >= 85
-    ? 'bg-amber-100 text-amber-700'
-    : 'bg-red-100 text-red-700';
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>
-      {fmtPct(value)}
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${vsBudgetBadgeClass(value)}`}>
+      {fmtVsBudget(value)}
     </span>
   );
 }

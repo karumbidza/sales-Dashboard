@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const period = (formData.get('period') as string) || '';
+    const sheets = (formData.get('sheets') as string) || '';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -76,15 +77,24 @@ export async function POST(req: NextRequest) {
     const scriptPath = join(process.cwd(), 'scripts', 'ingest.py');
     const args = ['--file', tempPath];
     if (period) args.push('--period', period);
+    if (logId) args.push('--upload-log-id', String(logId));
+    if (sheets) args.push('--sheets', sheets);
 
     const { stdout } = await execFileAsync('python3', [scriptPath, ...args], {
-      timeout: 120_000,
+      timeout: 600_000,
+      maxBuffer: 20 * 1024 * 1024,
       env: { ...process.env },
     });
 
-    const lines = stdout.trim().split('\n');
-    const lastJson = lines.reverse().find(l => l.trim().startsWith('{'));
-    const result = lastJson ? JSON.parse(lastJson) : { success: false };
+    // ingest.py prints pretty-printed JSON across multiple lines — grab from
+    // the last `{` in the output to the last `}`.
+    const start = stdout.lastIndexOf('\n{');
+    const end   = stdout.lastIndexOf('}');
+    const jsonBlob =
+      start >= 0 && end > start ? stdout.slice(start + 1, end + 1)
+      : stdout.trim().startsWith('{') ? stdout.trim()
+      : '';
+    const result = jsonBlob ? JSON.parse(jsonBlob) : { success: false };
 
     const durationMs = Date.now() - startMs;
 

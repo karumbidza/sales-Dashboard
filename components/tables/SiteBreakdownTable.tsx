@@ -1,16 +1,15 @@
 // components/tables/SiteBreakdownTable.tsx
 'use client';
 
+import { fmtVsBudget, vsBudgetBadgeClass } from '@/lib/formatters';
+
 function fmtVol(n: number)  { return n?.toLocaleString('en', { maximumFractionDigits: 0 }) ?? '—'; }
 function fmtRev(n: number)  { return n != null ? `$${n.toLocaleString('en', { maximumFractionDigits: 0 })}` : '—'; }
 function fmtPct(n: number | null) { return n != null ? `${n.toFixed(1)}%` : '—'; }
 
 function PctBadge({ value }: { value: number | null }) {
   if (value == null) return <span className="text-gray-300 text-xs">—</span>;
-  const cls = value >= 100 ? 'bg-emerald-100 text-emerald-700'
-            : value >= 85  ? 'bg-amber-100 text-amber-700'
-            : 'bg-red-100 text-red-700';
-  return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>{fmtPct(value)}</span>;
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${vsBudgetBadgeClass(value)}`}>{fmtVsBudget(value)}</span>;
 }
 
 interface Props { data: any[]; type: 'territory' | 'sites'; }
@@ -26,7 +25,7 @@ export default function SiteBreakdownTable({ data, type }: Props) {
         <table className="min-w-full text-sm">
           <thead className="bg-[#1e3a5f]">
             <tr>
-              {['Territory', 'Sites', 'Volume (L)', 'Revenue', 'Avg Daily', 'Budget (L)', 'Vs Budget', 'Vs Stretch', 'Contribution', 'Diesel', 'Blend', 'ULP'].map(h => (
+              {['Territory', 'Sites', 'Volume (L)', 'Revenue', 'Avg Daily', 'Budget (L)', 'Vs Budget', 'Vs Stretch', 'Net Margin', 'Contribution', 'Diesel', 'Blend', 'ULP'].map(h => (
                 <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-white whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -42,6 +41,9 @@ export default function SiteBreakdownTable({ data, type }: Props) {
                 <td className="px-3 py-2.5 text-right font-mono text-gray-400">{fmtVol(t.budgetVolume)}</td>
                 <td className="px-3 py-2.5 text-right"><PctBadge value={t.vsBudgetPct} /></td>
                 <td className="px-3 py-2.5 text-right"><PctBadge value={t.vsStretchPct} /></td>
+                <td className="px-3 py-2.5 text-right font-mono text-gray-700">
+                  {t.netMarginCpl != null ? `${t.netMarginCpl.toFixed(1)} ¢/L` : '—'}
+                </td>
                 <td className="px-3 py-2.5 text-right text-xs text-gray-500">{fmtPct(t.contributionPct)}</td>
                 <td className="px-3 py-2.5 text-right text-xs text-blue-600">{fmtVol(t.dieselVol)}</td>
                 <td className="px-3 py-2.5 text-right text-xs text-cyan-600">{fmtVol(t.blendVol)}</td>
@@ -55,7 +57,7 @@ export default function SiteBreakdownTable({ data, type }: Props) {
               <td className="px-3 py-2 text-center text-xs font-semibold">{data.reduce((s, r) => s + r.siteCount, 0)}</td>
               <td className="px-3 py-2 text-right font-mono font-bold text-gray-800">{fmtVol(data.reduce((s, r) => s + r.volume, 0))}</td>
               <td className="px-3 py-2 text-right font-mono font-semibold text-gray-500">{fmtRev(data.reduce((s, r) => s + r.revenue, 0))}</td>
-              <td colSpan={8} />
+              <td colSpan={9} />
             </tr>
           </tfoot>
         </table>
@@ -69,7 +71,7 @@ export default function SiteBreakdownTable({ data, type }: Props) {
       <table className="min-w-full text-sm">
         <thead className="bg-[#1e3a5f]">
           <tr>
-            {['Site', 'Territory', 'MOSO', 'Volume (L)', 'Revenue', 'Avg Daily', 'Budget', 'Vs Budget', 'Cash Ratio'].map(h => (
+            {['Site', 'Territory', 'MOSO', 'Volume (L)', 'Revenue', 'Avg Daily', 'Budget', 'Vs Budget', 'Cash %', 'Coupon (L)', 'Card (L)', 'Flex (L)', 'Net Margin'].map(h => (
               <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-white whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -88,6 +90,10 @@ export default function SiteBreakdownTable({ data, type }: Props) {
               <td className="px-3 py-2.5 text-right font-mono text-gray-400">{fmtVol(s.budgetVolume)}</td>
               <td className="px-3 py-2.5 text-right"><PctBadge value={s.vsBudgetPct} /></td>
               <td className="px-3 py-2.5 text-right text-xs text-gray-500">{fmtPct(s.cashRatioPct)}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-500">{s.couponVolume > 0 ? fmtVol(s.couponVolume) : '—'}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-500">{s.cardVolume   > 0 ? fmtVol(s.cardVolume)   : '—'}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-500">{s.flexVolume   > 0 ? fmtVol(s.flexVolume)   : '—'}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-700">{s.netMarginCpl != null ? `${s.netMarginCpl.toFixed(1)} ¢/L` : '—'}</td>
             </tr>
           ))}
         </tbody>

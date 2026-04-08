@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       product:   sp.get('product')   || undefined,
       moso:      sp.get('moso')      || undefined,
     };
-    const limit = Math.min(Math.max(1, parseInt(sp.get('limit') || '10')), 100);
+    const limit = Math.min(Math.max(1, parseInt(sp.get('limit') || '10')), 1000);
     const rawSort = sp.get('sortBy') || 'volume';
     const VALID_SORTS = ['volume', 'revenue', 'vs_budget'] as const;
     if (!VALID_SORTS.includes(rawSort as any)) {
@@ -25,6 +25,10 @@ export async function GET(req: NextRequest) {
     const volExpr = volumeExpr(filters.product);
     const revExpr = revenueExpr(filters.product);
     const { where, params, nextOffset } = buildSalesFilters(filters);
+
+    // Effective date range for pro-rata budget calc.
+    const rangeFrom = filters.dateFrom || `${new Date().getFullYear()}-01-01`;
+    const rangeTo   = filters.dateTo   || new Date().toISOString().split('T')[0];
 
     const baseJoins = `
       FROM sales s
@@ -45,9 +49,23 @@ export async function GET(req: NextRequest) {
           ROUND(SUM(${revExpr})::NUMERIC, 2)              AS revenue,
           COUNT(DISTINCT s.sale_date)                     AS days_traded,
           ROUND((SUM(${volExpr}) / NULLIF(COUNT(DISTINCT s.sale_date),0))::NUMERIC, 0) AS avg_daily,
-          ROUND(CASE WHEN SUM(${volExpr}) > 0
+          ROUND(CASE WHEN SUM(${revExpr}) > 0
             THEN SUM(COALESCE(s.cash_sale_value,0)) / SUM(${revExpr}) * 100
-            ELSE 0 END::NUMERIC, 1)                      AS cash_ratio_pct
+            ELSE 0 END::NUMERIC, 1)                      AS cash_ratio_pct,
+          ROUND(SUM(
+            COALESCE(s.diesel_coupon_qty, 0) +
+            COALESCE(s.blend_coupon_qty,  0) +
+            COALESCE(s.ulp_coupon_qty,    0)
+          )::NUMERIC, 0)                                 AS coupon_volume,
+          ROUND(SUM(
+            COALESCE(s.diesel_card_qty, 0) +
+            COALESCE(s.blend_card_qty,  0) +
+            COALESCE(s.ulp_card_qty,    0)
+          )::NUMERIC, 0)                                 AS card_volume,
+          ROUND(SUM(
+            COALESCE(s.flex_diesel_volume, 0) +
+            COALESCE(s.flex_blend_volume,  0)
+          )::NUMERIC, 0)                                 AS flex_volume
         ${baseJoins}
         ${where}
         GROUP BY si.site_code, si.budget_name, si.moso, t.tm_code, t.tm_name
@@ -55,15 +73,52 @@ export async function GET(req: NextRequest) {
       grand_total AS (
         SELECT SUM(volume) AS total FROM site_totals
       ),
+      -- Net margin (cents per litre) per site from margin_data
+      site_margin AS (
+        SELECT
+          m.site_code,
+          ROUND((SUM(m.net_gross_margin) / NULLIF(SUM(m.inv_volume), 0) * 100)::NUMERIC, 2) AS net_margin_cpl
+        FROM margin_data m
+        WHERE m.period_month >= DATE_TRUNC('month', $${nextOffset + 1}::DATE)
+          AND m.period_month <= DATE_TRUNC('month', $${nextOffset + 2}::DATE)
+        GROUP BY m.site_code
+      ),
+      -- Pro-rated budget for the queried date range: for each (site, month)
+      -- overlapping the range, take (overlap_days / calendar_days * monthly_budget).
+      site_budget AS (
+        SELECT
+          vb.site_code,
+          SUM(
+            vb.budget_volume / bc.calendar_days::NUMERIC *
+            GREATEST(0,
+              (LEAST((bc.period_month + INTERVAL '1 month' - INTERVAL '1 day')::DATE,
+                     $${nextOffset + 2}::DATE)
+               - GREATEST(bc.period_month, $${nextOffset + 1}::DATE) + 1)::INTEGER
+            )
+          ) AS budget_volume,
+          SUM(
+            COALESCE(vb.stretch_volume, vb.budget_volume * 1.1) / bc.calendar_days::NUMERIC *
+            GREATEST(0,
+              (LEAST((bc.period_month + INTERVAL '1 month' - INTERVAL '1 day')::DATE,
+                     $${nextOffset + 2}::DATE)
+               - GREATEST(bc.period_month, $${nextOffset + 1}::DATE) + 1)::INTEGER
+            )
+          ) AS stretch_volume
+        FROM volume_budget vb
+        JOIN budget_calendar bc ON vb.budget_month = bc.period_month
+        WHERE bc.period_month <= $${nextOffset + 2}::DATE
+          AND (bc.period_month + INTERVAL '1 month')::DATE > $${nextOffset + 1}::DATE
+        GROUP BY vb.site_code
+      ),
       with_budget AS (
         SELECT
           st.*,
-          COALESCE(vb.budget_volume, 0)                 AS budget_volume,
-          COALESCE(vb.stretch_volume, 0)                AS stretch_volume
+          COALESCE(sb.budget_volume, 0)  AS budget_volume,
+          COALESCE(sb.stretch_volume, 0) AS stretch_volume,
+          sm.net_margin_cpl
         FROM site_totals st
-        LEFT JOIN volume_budget vb
-          ON st.site_code = vb.site_code
-          AND DATE_TRUNC('month', vb.budget_month) = DATE_TRUNC('month', COALESCE($${nextOffset + 1}::DATE, CURRENT_DATE))
+        LEFT JOIN site_budget sb ON st.site_code = sb.site_code
+        LEFT JOIN site_margin sm ON st.site_code = sm.site_code
       )
       SELECT
         wb.*,
@@ -79,8 +134,8 @@ export async function GET(req: NextRequest) {
       ORDER BY ${sortBy === 'vs_budget' ? 'vs_budget_pct DESC NULLS LAST'
                 : sortBy === 'revenue'  ? 'revenue DESC'
                 : 'volume DESC'}
-      LIMIT $${nextOffset + 2}
-    `, [...params, filters.dateTo || new Date().toISOString().split('T')[0], limit]);
+      LIMIT $${nextOffset + 3}
+    `, [...params, rangeFrom, rangeTo, limit]);
 
     const data = rows.map((r: any) => ({
       rank:            parseInt(r.rank),
@@ -99,6 +154,10 @@ export async function GET(req: NextRequest) {
       vsBudgetPct:     r.vs_budget_pct ? parseFloat(r.vs_budget_pct) : null,
       vsStretchPct:    r.vs_stretch_pct ? parseFloat(r.vs_stretch_pct) : null,
       cashRatioPct:    parseFloat(r.cash_ratio_pct),
+      couponVolume:    parseFloat(r.coupon_volume || 0),
+      cardVolume:      parseFloat(r.card_volume   || 0),
+      flexVolume:      parseFloat(r.flex_volume   || 0),
+      netMarginCpl:    r.net_margin_cpl != null ? parseFloat(r.net_margin_cpl) : null,
     }));
 
     return NextResponse.json({ data, total: data.length });

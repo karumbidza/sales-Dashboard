@@ -1,4 +1,4 @@
-# Fuel Sales Intelligence Platform
+# Redan Sales Dashboard Platform
 ## Step-by-Step Deployment Guide
 
 ---
@@ -128,7 +128,7 @@ Reading Excel sheets...
 # In the fuel-dashboard directory
 git init
 git add .
-git commit -m "Initial commit: Fuel Sales Intelligence Platform"
+git commit -m "Initial commit: Redan Sales Dashboard Platform"
 
 # Create a GitHub repo at github.com and push
 git remote add origin https://github.com/YOUR_USERNAME/fuel-dashboard.git

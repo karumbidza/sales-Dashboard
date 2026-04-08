@@ -1,22 +1,8 @@
-// components/KPICards.tsx
 'use client';
 
-interface KPIsProps { kpis: any; }
+import { fmtVsBudget } from '@/lib/formatters';
 
-function pctColor(pct: number | null, positiveIsGood = true): string {
-  if (pct == null) return 'text-gray-400';
-  const good = positiveIsGood ? pct >= 100 : pct <= 0;
-  if (good || pct >= 100) return 'text-emerald-600';
-  if (pct >= 85) return 'text-amber-600';
-  return 'text-red-600';
-}
-
-function pctBg(pct: number | null): string {
-  if (pct == null) return 'bg-gray-100';
-  if (pct >= 100) return 'bg-emerald-50 border-emerald-200';
-  if (pct >= 85)  return 'bg-amber-50 border-amber-200';
-  return 'bg-red-50 border-red-200';
-}
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtVol(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -28,127 +14,255 @@ function fmtPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
+function fmtRev(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+function badgeClass(pct: number | null): string {
+  if (pct == null)  return 'badge-gray';
+  if (pct >= 100)   return 'badge-green';
+  if (pct >= 85)    return 'badge-amber';
+  return 'badge-red';
+}
+
+function growthColor(n: number | null): string {
+  if (n == null) return 'text-gray-400';
+  return n >= 0 ? 'text-emerald-600' : 'text-red-600';
+}
+
+// ── SVG Icons ──────────────────────────────────────────────────────────────
+
+const icons = {
+  barrel: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <ellipse cx="12" cy="5" rx="7" ry="3"/>
+      <path d="M5 5v14M19 5v14"/>
+      <ellipse cx="12" cy="19" rx="7" ry="3"/>
+      <path d="M5 12h14"/>
+    </svg>
+  ),
+  chart: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+  ),
+  target: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+    </svg>
+  ),
+  trending: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+      <polyline points="17 6 23 6 23 12"/>
+    </svg>
+  ),
+  lightning: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </svg>
+  ),
+  dollar: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <line x1="12" y1="1" x2="12" y2="23"/>
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  ),
+  handshake: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0l-.77.78-.77-.78a5.4 5.4 0 0 0-7.65 7.65l1.06 1.06L12 21.23l7.77-7.77 1.06-1.06a5.4 5.4 0 0 0-.41-7.82z"/>
+    </svg>
+  ),
+  cash: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+      <line x1="1" y1="10" x2="23" y2="10"/>
+    </svg>
+  ),
+  store: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <path d="M3 9l1-5h16l1 5"/>
+      <path d="M3 9a2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0"/>
+      <path d="M5 21V9M19 21V9M5 21h14"/>
+    </svg>
+  ),
+  calendar: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+         className="w-4 h-4 text-gray-400">
+      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+      <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    </svg>
+  ),
+};
+
+// ── Card Component ─────────────────────────────────────────────────────────
+
 interface CardProps {
   label: string;
   value: string;
   sub?: string;
-  badge?: { text: string; color?: string };
-  trend?: number | null;
-  icon: string;
+  badgePct?: number | null;
+  badgeText?: string;
+  growth?: number | null;
+  icon: React.ReactNode;
   highlight?: boolean;
 }
 
-function KPICard({ label, value, sub, badge, trend, icon, highlight }: CardProps) {
-  const trendPositive = trend != null && trend >= 0;
+function KPICard({ label, value, sub, badgePct, badgeText, growth, icon, highlight }: CardProps) {
+  const badge = badgeText ?? (badgePct != null ? fmtVsBudget(badgePct) : null);
   return (
-    <div className={`relative rounded-xl border p-4 bg-white shadow-sm
-      ${highlight ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'}`}>
-      <div className="flex items-start justify-between mb-2">
-        <span className="text-2xl">{icon}</span>
+    <div
+      className={`relative bg-white border rounded-xl overflow-hidden
+        ${highlight ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-[#e5e7eb]'}`}
+      style={{ padding: '16px 20px' }}
+    >
+      {/* Top row: icon + badge */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="p-1.5 bg-gray-50 rounded-md border border-gray-100">
+          {icon}
+        </div>
         {badge && (
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
-            ${badge.color || 'bg-blue-100 text-blue-700'}`}>
-            {badge.text}
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeClass(badgePct ?? null)}`}>
+            {badge}
           </span>
         )}
       </div>
-      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 leading-tight">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-      {trend != null && (
-        <p className={`text-xs font-semibold mt-2 ${trendPositive ? 'text-emerald-600' : 'text-red-500'}`}>
-          {trendPositive ? '▲' : '▼'} {Math.abs(trend).toFixed(1)}% vs prior period
+
+      {/* Label */}
+      <p className="kpi-label mb-1">{label}</p>
+
+      {/* Value */}
+      <p className="kpi-value tabnum">{value}</p>
+
+      {/* Sub */}
+      {sub && (
+        <p className="text-[11px] text-gray-400 mt-1 tabnum">{sub}</p>
+      )}
+
+      {/* Growth indicator */}
+      {growth != null && (
+        <p className={`text-[11px] font-semibold mt-2 ${growthColor(growth)}`}>
+          {growth >= 0
+            ? <span>&#9650; {fmtPct(growth)} vs prior</span>
+            : <span>&#9660; {fmtPct(Math.abs(growth))} vs prior</span>
+          }
         </p>
+      )}
+
+      {/* Highlight accent bar */}
+      {highlight && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-400" />
       )}
     </div>
   );
 }
 
-export default function KPICards({ kpis }: KPIsProps) {
-  if (!kpis) return null;
-  const { mtd, ytd, budget, growth, petrotrade } = kpis;
+// ── Main Export ────────────────────────────────────────────────────────────
 
-  const vsBudgetPct = budget?.vsBudgetPct;
-  const vsStretchPct = budget?.vsStretchPct;
+export default function KPICards({ kpis }: { kpis: any }) {
+  if (!kpis) return null;
+  const { mtd, ytd, budget, growth, petrotrade, margin } = kpis;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
+
       <KPICard
-        icon="🛢️"
+        icon={icons.barrel}
         label="MTD Volume"
         value={`${fmtVol(mtd?.volume)} L`}
-        sub={`Budget: ${fmtVol(budget?.mtdBudget)} L`}
-        badge={{
-          text: fmtPct(vsBudgetPct),
-          color: vsBudgetPct == null ? 'bg-gray-100 text-gray-500'
-               : vsBudgetPct >= 100  ? 'bg-emerald-100 text-emerald-700'
-               : vsBudgetPct >= 85   ? 'bg-amber-100 text-amber-700'
-               : 'bg-red-100 text-red-700'
-        }}
+        sub={budget?.daysInMonth
+          ? `Budget: ${fmtVol(budget?.mtdBudget)} L (${budget?.daysElapsed}/${budget?.daysInMonth} days)`
+          : `Budget: ${fmtVol(budget?.mtdBudget)} L`}
+        badgePct={budget?.vsBudgetPct}
         highlight
       />
+
       <KPICard
-        icon="📊"
+        icon={icons.chart}
         label="YTD Volume"
         value={`${fmtVol(ytd?.volume)} L`}
-        sub={`YTD Budget Achievement: ${fmtPct(ytd?.vsBudgetPct)}`}
-        trend={growth?.ytdGrowthPct}
+        sub={`YTD vs pro-rata budget: ${fmtVsBudget(ytd?.vsBudgetPct)}`}
+        badgePct={ytd?.vsBudgetPct}
+        growth={growth?.ytdGrowthPct}
       />
+
       <KPICard
-        icon="🎯"
+        icon={icons.target}
         label="Vs Stretch"
-        value={fmtPct(vsStretchPct)}
-        sub={`Stretch: ${fmtVol(budget?.mtdStretch)} L`}
-        badge={{
-          text: (vsStretchPct ?? 0) >= 100 ? 'ACHIEVED' : 'IN PROGRESS',
-          color: (vsStretchPct ?? 0) >= 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-        }}
+        value={fmtVsBudget(budget?.vsStretchPct)}
+        sub="vs pro-rated stretch target"
+        badgePct={budget?.vsStretchPct}
+        badgeText={(budget?.vsStretchPct ?? 0) >= 100 ? 'ACHIEVED' : undefined}
       />
+
       <KPICard
-        icon="📈"
-        label="Growth"
+        icon={icons.trending}
+        label="MTD Growth"
         value={growth?.mtdGrowthPct != null
           ? `${growth.mtdGrowthPct >= 0 ? '+' : ''}${fmtPct(growth.mtdGrowthPct)}`
           : '—'}
         sub={`Prior: ${fmtVol(growth?.priorMtdVolume)} L`}
-        trend={growth?.mtdGrowthPct}
+        growth={growth?.mtdGrowthPct}
       />
+
       <KPICard
-        icon="⚡"
-        label="Avg Daily Sales"
+        icon={icons.lightning}
+        label="Avg Daily"
         value={`${fmtVol(mtd?.avgDaily)} L`}
-        sub={`${mtd?.tradingDays ?? 0} trading days | ${mtd?.activeSites ?? 0} sites`}
+        sub={`${mtd?.tradingDays ?? 0} days · ${mtd?.activeSites ?? 0} sites`}
       />
+
       <KPICard
-        icon="💵"
+        icon={icons.dollar}
         label="MTD Revenue"
-        value={mtd?.revenue != null ? `$${(mtd.revenue / 1000).toFixed(0)}K` : '—'}
-        sub="Total invoiced"
+        value={fmtRev(mtd?.revenue)}
+        sub="Total invoiced revenue"
       />
+
       <KPICard
-        icon="🤝"
+        icon={icons.handshake}
         label="Petrotrade Vol"
         value={`${fmtVol(petrotrade?.mtdVolume)} L`}
         sub={`Margin: $${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}`}
       />
+
       <KPICard
-        icon="💰"
+        icon={icons.cash}
         label="Cash Ratio"
         value={mtd?.cashRatio != null ? `${(mtd.cashRatio * 100).toFixed(1)}%` : '—'}
-        sub="Cash / Total Revenue"
+        sub="Cash / total revenue"
       />
+
       <KPICard
-        icon="🏪"
+        icon={icons.store}
         label="Active Sites"
         value={String(mtd?.activeSites ?? '—')}
         sub={`${mtd?.tradingDays ?? 0} days reporting`}
       />
+
       <KPICard
-        icon="📅"
-        label="As Of"
-        value={kpis.asOf || '—'}
-        sub="Last data date"
+        icon={icons.calendar}
+        label="Avg Margin / Site"
+        value={margin?.avgCplPerSite != null
+          ? `${margin.avgCplPerSite.toFixed(1)} ¢/L`
+          : '—'}
+        sub={margin?.sitesWithMargin
+          ? `${margin.sitesWithMargin} sites · net gross margin`
+          : 'Net gross margin'}
       />
+
     </div>
   );
 }

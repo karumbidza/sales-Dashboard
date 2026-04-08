@@ -18,6 +18,9 @@ export async function GET(req: NextRequest) {
     const revExpr = revenueExpr(filters.product);
     const { where, params, nextOffset } = buildSalesFilters(filters);
 
+    const rangeFrom = filters.dateFrom || `${new Date().getFullYear()}-01-01`;
+    const rangeTo   = filters.dateTo   || new Date().toISOString().split('T')[0];
+
     const baseJoins = `
       FROM sales s
       JOIN sites si ON s.site_code = si.site_code
@@ -45,21 +48,53 @@ export async function GET(req: NextRequest) {
         GROUP BY t.tm_code, t.tm_name
       ),
       grand AS (SELECT SUM(volume) AS grand_total FROM territory_totals),
+      -- Net margin (cents per litre) per territory from margin_data.
+      territory_margin AS (
+        SELECT
+          t.tm_code,
+          ROUND((SUM(m.net_gross_margin) / NULLIF(SUM(m.inv_volume), 0) * 100)::NUMERIC, 2) AS net_margin_cpl,
+          ROUND(SUM(m.net_gross_margin)::NUMERIC, 2) AS net_margin_total
+        FROM margin_data m
+        JOIN sites si ON m.site_code = si.site_code
+        JOIN territories t ON si.territory_id = t.id
+        WHERE m.period_month >= DATE_TRUNC('month', $${nextOffset + 1}::DATE)
+          AND m.period_month <= DATE_TRUNC('month', $${nextOffset + 2}::DATE)
+        GROUP BY t.tm_code
+      ),
+      -- Pro-rated budget for the queried date range, aggregated to territory.
       territory_budget AS (
         SELECT
           t.tm_code,
-          ROUND(SUM(vb.budget_volume)::NUMERIC, 0)        AS budget_volume,
-          ROUND(SUM(vb.stretch_volume)::NUMERIC, 0)       AS stretch_volume
+          ROUND(SUM(
+            vb.budget_volume / bc.calendar_days::NUMERIC *
+            GREATEST(0,
+              (LEAST((bc.period_month + INTERVAL '1 month' - INTERVAL '1 day')::DATE,
+                     $${nextOffset + 2}::DATE)
+               - GREATEST(bc.period_month, $${nextOffset + 1}::DATE) + 1)::INTEGER
+            )
+          )::NUMERIC, 0) AS budget_volume,
+          ROUND(SUM(
+            COALESCE(vb.stretch_volume, vb.budget_volume * 1.1) / bc.calendar_days::NUMERIC *
+            GREATEST(0,
+              (LEAST((bc.period_month + INTERVAL '1 month' - INTERVAL '1 day')::DATE,
+                     $${nextOffset + 2}::DATE)
+               - GREATEST(bc.period_month, $${nextOffset + 1}::DATE) + 1)::INTEGER
+            )
+          )::NUMERIC, 0) AS stretch_volume
         FROM volume_budget vb
+        JOIN budget_calendar bc ON vb.budget_month = bc.period_month
         JOIN sites si ON vb.site_code = si.site_code
         JOIN territories t ON si.territory_id = t.id
-        WHERE DATE_TRUNC('month', vb.budget_month) = DATE_TRUNC('month', COALESCE($${nextOffset + 1}::DATE, CURRENT_DATE))
+        WHERE bc.period_month <= $${nextOffset + 2}::DATE
+          AND (bc.period_month + INTERVAL '1 month')::DATE > $${nextOffset + 1}::DATE
         GROUP BY t.tm_code
       )
       SELECT
         tt.*,
         tb.budget_volume,
         tb.stretch_volume,
+        tm.net_margin_cpl,
+        tm.net_margin_total,
         ROUND((tt.volume / NULLIF(g.grand_total, 0) * 100)::NUMERIC, 2) AS contribution_pct,
         CASE WHEN tb.budget_volume > 0
           THEN ROUND((tt.volume / tb.budget_volume * 100)::NUMERIC, 1) END AS vs_budget_pct,
@@ -68,8 +103,9 @@ export async function GET(req: NextRequest) {
       FROM territory_totals tt
       CROSS JOIN grand g
       LEFT JOIN territory_budget tb ON tt.territory_code = tb.tm_code
+      LEFT JOIN territory_margin tm ON tt.territory_code = tm.tm_code
       ORDER BY tt.volume DESC
-    `, [...params, filters.dateTo || new Date().toISOString().split('T')[0]]);
+    `, [...params, rangeFrom, rangeTo]);
 
     const data = rows.map((r: any) => ({
       territoryCode:   r.territory_code,
@@ -87,6 +123,8 @@ export async function GET(req: NextRequest) {
       contributionPct: parseFloat(r.contribution_pct || 0),
       vsBudgetPct:     r.vs_budget_pct ? parseFloat(r.vs_budget_pct) : null,
       vsStretchPct:    r.vs_stretch_pct ? parseFloat(r.vs_stretch_pct) : null,
+      netMarginCpl:    r.net_margin_cpl != null ? parseFloat(r.net_margin_cpl) : null,
+      netMarginTotal:  r.net_margin_total != null ? parseFloat(r.net_margin_total) : null,
     }));
 
     return NextResponse.json({ data });

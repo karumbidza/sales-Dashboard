@@ -9,24 +9,51 @@ export function getPool(): Pool {
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: true },
       max: 10,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      // Neon's pooler drops idle conns aggressively — keep ours short-lived
+      // and ensure stale ones don't sit around in the JS pool.
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 8_000,
+      keepAlive: true,
     });
-    pool.on('error', (err) => console.error('Pool error', err));
+    // pg emits 'error' on idle clients that the server killed; just log so the
+    // pool can prune them instead of crashing the process.
+    pool.on('error', (err) => console.error('pg pool idle client error:', err.message));
   }
   return pool;
+}
+
+function isTransientConnError(err: any): boolean {
+  const msg = String(err?.message || '');
+  return (
+    msg.includes('Connection terminated') ||
+    msg.includes('Client has encountered a connection error') ||
+    msg.includes('connection timeout') ||
+    err?.code === 'ECONNRESET' ||
+    err?.code === '57P01'  // admin_shutdown
+  );
 }
 
 export async function query<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T[]> {
-  const client = await getPool().connect();
+  const run = async () => {
+    const client = await getPool().connect();
+    try {
+      const result: QueryResult<T> = await client.query(sql, params);
+      return result.rows;
+    } finally {
+      client.release();
+    }
+  };
+
   try {
-    const result: QueryResult<T> = await client.query(sql, params);
-    return result.rows;
-  } finally {
-    client.release();
+    return await run();
+  } catch (err) {
+    if (!isTransientConnError(err)) throw err;
+    // Single retry — Neon idle pruning is the usual culprit and reconnect is fast
+    console.warn('pg query retry after transient error:', (err as any).message);
+    return await run();
   }
 }
 

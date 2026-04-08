@@ -14,9 +14,16 @@ interface Props {
   onClose: () => void;
 }
 
-function fmtVol(n: number)  { return n?.toLocaleString('en', { maximumFractionDigits: 0 }) ?? '—'; }
-function fmtPct(n: number | null) { return n != null ? `${n.toFixed(1)}%` : '—'; }
-function fmtRev(n: number)  { return n != null ? `$${n.toLocaleString('en', { maximumFractionDigits: 2 })}` : '—'; }
+import { fmtVsBudget } from '@/lib/formatters';
+
+function num(v: any): number | null {
+  if (v == null) return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function fmtVol(v: any) { const n = num(v); return n == null ? '—' : n.toLocaleString('en', { maximumFractionDigits: 0 }); }
+function fmtPct(v: any) { const n = num(v); return n == null ? '—' : `${n.toFixed(1)}%`; }
+function fmtRev(v: any) { const n = num(v); return n == null ? '—' : `$${n.toLocaleString('en', { maximumFractionDigits: 2 })}`; }
 
 export default function SiteDetailModal({ siteCode, dateFrom, dateTo, onClose }: Props) {
   const [data, setData] = useState<any>(null);
@@ -78,7 +85,7 @@ export default function SiteDetailModal({ siteCode, dateFrom, dateTo, onClose }:
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: 'Total Volume', value: `${fmtVol(data.kpis.total_volume)} L`, sub: `Budget: ${fmtVol(data.kpis.budget_volume)} L` },
-                { label: 'Vs Budget', value: fmtPct(data.kpis.vs_budget_pct), color: vsBudgetColor(data.kpis.vs_budget_pct) },
+                { label: 'Vs Budget', value: fmtVsBudget(data.kpis.vs_budget_pct), color: vsBudgetColor(data.kpis.vs_budget_pct) },
                 { label: 'Avg Daily', value: `${fmtVol(data.kpis.avg_daily)} L/d`, sub: `${data.kpis.days_traded} days` },
                 { label: 'Cash Ratio', value: fmtPct(data.kpis.cash_ratio_pct), sub: 'Cash / Revenue' },
               ].map(k => (

@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
     // ── DAILY TREND ─────────────────────────────────────────────────────────
     const rows = await query<any>(`
       SELECT
+        s.sale_date::TEXT                                  AS date,
         s.sale_date::TEXT                                  AS period,
         TO_CHAR(s.sale_date, 'DD Mon')                    AS label,
         ROUND(SUM(${volExpr})::NUMERIC, 0)                AS actual_volume,
@@ -110,15 +111,61 @@ export async function GET(req: NextRequest) {
       ORDER BY s.sale_date ASC
     `, params);
 
-    const data = rows.map((r: any) => ({
-      ...r,
-      actual_volume:  parseFloat(r.actual_volume),
-      actual_revenue: parseFloat(r.actual_revenue),
-      diesel_volume:  parseFloat(r.diesel_volume),
-      blend_volume:   parseFloat(r.blend_volume),
-      ulp_volume:     parseFloat(r.ulp_volume),
-      cash_value:     parseFloat(r.cash_value),
-    }));
+    // Build a (month → monthly budget total) map for each month touched by the
+    // result set, honouring the same territory / siteCode / moso filters.
+    const months = Array.from(new Set(
+      rows.map((r: any) => String(r.date).slice(0, 7) + '-01')
+    ));
+    const monthlyBudgetMap:  Record<string, number> = {};
+    const monthlyStretchMap: Record<string, number> = {};
+    if (months.length > 0) {
+      const bp: any[] = [months];
+      let bClause = '';
+      if (filters.territory) {
+        bp.push(filters.territory.toUpperCase());
+        bClause += ` AND t.tm_code = $${bp.length}`;
+      }
+      if (filters.siteCode) {
+        bp.push(filters.siteCode);
+        bClause += ` AND vb.site_code = $${bp.length}`;
+      }
+      if (filters.moso) {
+        bp.push(filters.moso.toUpperCase());
+        bClause += ` AND si.moso = $${bp.length}`;
+      }
+      const budgetRows = await query<any>(`
+        SELECT vb.budget_month::TEXT AS m,
+               SUM(vb.budget_volume)  AS budget_volume,
+               SUM(COALESCE(vb.stretch_volume, vb.budget_volume * 1.1)) AS stretch_volume
+        FROM volume_budget vb
+        JOIN sites si ON vb.site_code = si.site_code
+        LEFT JOIN territories t ON si.territory_id = t.id
+        WHERE vb.budget_month = ANY($1::DATE[])
+        ${bClause}
+        GROUP BY vb.budget_month
+      `, bp);
+      for (const r of budgetRows) {
+        const k = String(r.m).slice(0, 10);
+        monthlyBudgetMap[k]  = parseFloat(r.budget_volume);
+        monthlyStretchMap[k] = parseFloat(r.stretch_volume);
+      }
+    }
+
+    const data = rows.map((r: any) => {
+      const monthKey = String(r.date).slice(0, 7) + '-01';
+      return {
+        ...r,
+        date:           String(r.date).slice(0, 10),
+        actual_volume:  parseFloat(r.actual_volume),
+        actual_revenue: parseFloat(r.actual_revenue),
+        diesel_volume:  parseFloat(r.diesel_volume),
+        blend_volume:   parseFloat(r.blend_volume),
+        ulp_volume:     parseFloat(r.ulp_volume),
+        cash_value:     parseFloat(r.cash_value),
+        budget_volume:  monthlyBudgetMap[monthKey]  ?? null,  // monthly total
+        stretch_volume: monthlyStretchMap[monthKey] ?? null,  // monthly total
+      };
+    });
 
     return NextResponse.json({ granularity: 'daily', data });
 

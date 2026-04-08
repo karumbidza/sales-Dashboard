@@ -25,17 +25,25 @@ export default function ReportGenerator({ filters }: Props) {
   const [commentAuthor, setAuthor]    = useState('');
   const [pastReports, setPastReports] = useState<any[]>([]);
 
+  // Helper: parse JSON only if the response is OK and actually has a body
+  const safeJson = async (res: Response) => {
+    if (!res.ok) return null;
+    try { return await res.json(); } catch { return null; }
+  };
+
   useEffect(() => {
     fetch('/api/report')
-      .then(r => r.json())
-      .then(d => setPastReports(d.data || []));
+      .then(safeJson)
+      .then(d => setPastReports(d?.data || []))
+      .catch(() => setPastReports([]));
   }, []);
 
   useEffect(() => {
     if (!reportId) return;
     fetch(`/api/comments?reportId=${reportId}`)
-      .then(r => r.json())
-      .then(d => setComments(d.data || []));
+      .then(safeJson)
+      .then(d => setComments(d?.data || []))
+      .catch(() => setComments([]));
   }, [reportId]);
 
   const generate = async () => {
