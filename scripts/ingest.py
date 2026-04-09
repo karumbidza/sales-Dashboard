@@ -41,6 +41,14 @@ def safe_str(val):
     return str(val).strip()
 
 
+def site_code(val):
+    """Canonical form of a site_code: trimmed and UPPERCASED.
+    All sheets must use this when reading SITE CODE so that 'gle-022' and
+    'GLE-022' are treated as the same site, not two different ones."""
+    s = safe_str(val)
+    return s.upper() if s else None
+
+
 def first_of_month(year, month):
     return date(year, month, 1)
 
@@ -92,7 +100,7 @@ def ingest_name_index(conn, df, source_file):
 
     records = []
     for _, row in df.iterrows():
-        code = safe_str(row.get('site_code'))
+        code = site_code(row.get('site_code'))
         budget = safe_str(row.get('budget_name'))
         if not code or not budget:
             continue
@@ -103,6 +111,14 @@ def ingest_name_index(conn, df, source_file):
             safe_str(row.get('status_report_name')),
             safe_str(row.get('petrotrade_name')),
         ))
+
+    # Deduplicate by site_code — last row in the sheet wins. Without this,
+    # NAME INDEX rows that share a code (intentional name aliases or typos)
+    # would crash the ON CONFLICT upsert with a CardinalityViolation.
+    seen = {}
+    for rec in records:
+        seen[rec[0]] = rec
+    records = list(seen.values())
 
     with conn.cursor() as cur:
         execute_values(cur, """
@@ -133,7 +149,7 @@ def ingest_budget(conn, df, source_file):
     # Update sites with MOSO and territory
     site_updates = []
     for _, row in df.iterrows():
-        code = safe_str(row.get('SITE CODE'))
+        code = site_code(row.get('SITE CODE'))
         tm = safe_str(row.get('TM'))
         moso = safe_str(row.get('MOSO'))
         if not code:
@@ -155,7 +171,7 @@ def ingest_budget(conn, df, source_file):
 
     budget_records = []
     for _, row in df.iterrows():
-        code = safe_str(row.get('SITE CODE'))
+        code = site_code(row.get('SITE CODE'))
         if not code:
             continue
         stretch = safe_float(row.get('Stretch'))
@@ -293,17 +309,34 @@ def diff_and_filter_records(records, existing, upload_log_id):
 def ingest_status_report(conn, df, source_file, upload_log_id=None):
     print("▶ Ingesting STATUS REPORT (primary sales)...")
 
+    # Clear any unmatched rows recorded for this upload (re-ingest case)
+    if upload_log_id:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM unmatched_status_rows WHERE upload_log_id = %s AND sheet_name = 'STATUS REPORT'",
+                (upload_log_id,),
+            )
+
     # Get valid site codes
     with conn.cursor() as cur:
         cur.execute("SELECT site_code FROM sites")
         valid_codes = {r[0] for r in cur.fetchall()}
 
     records = []
+    unmatched = []  # rows whose SITE CODE isn't in NAME INDEX
     skipped = 0
     for _, row in df.iterrows():
-        code = safe_str(row.get('SITE CODE'))
+        raw_code = safe_str(row.get('SITE CODE'))
+        code = site_code(row.get('SITE CODE'))
+        raw_date_for_unmatched = row.get('Date')
         if not code or code not in valid_codes:
             skipped += 1
+            if raw_code:  # only log if there's actually something there
+                try:
+                    sd = pd.to_datetime(raw_date_for_unmatched).date() if not pd.isna(raw_date_for_unmatched) else None
+                except Exception:
+                    sd = None
+                unmatched.append((raw_code, sd, 'STATUS REPORT', source_file, upload_log_id))
             continue
 
         raw_date = row.get('Date')
@@ -477,24 +510,50 @@ def ingest_status_report(conn, df, source_file, upload_log_id=None):
     conn.commit()
     print(f"  ✓ {len(records)} sales records upserted ({skipped} skipped)")
 
+    if unmatched:
+        with conn.cursor() as cur:
+            execute_values(cur, """
+                INSERT INTO unmatched_status_rows
+                  (raw_site_code, sale_date, sheet_name, source_file, upload_log_id)
+                VALUES %s
+            """, unmatched)
+        conn.commit()
+        print(f"  ⚠ {len(unmatched)} STATUS REPORT rows logged as unmatched (site code not in NAME INDEX)")
+
 
 # ─────────────────────────────────────────────────────────────
 # STEP 4: INGEST PETROTRADE
 # ─────────────────────────────────────────────────────────────
 
-def ingest_petrotrade(conn, df, source_file):
+def ingest_petrotrade(conn, df, source_file, upload_log_id=None):
     print("▶ Ingesting PETROTRADE volumes...")
+
+    if upload_log_id:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM unmatched_status_rows WHERE upload_log_id = %s AND sheet_name = 'PETROTRADE'",
+                (upload_log_id,),
+            )
 
     with conn.cursor() as cur:
         cur.execute("SELECT site_code FROM sites")
         valid_codes = {r[0] for r in cur.fetchall()}
 
     records = []
+    unmatched = []
     skipped = 0
     for _, row in df.iterrows():
-        code = safe_str(row.get('SITE CODE'))
+        raw_code = safe_str(row.get('SITE CODE'))
+        code = site_code(row.get('SITE CODE'))
         if not code or code not in valid_codes:
             skipped += 1
+            if raw_code:
+                rd = row.get('DATE')
+                try:
+                    sd = pd.to_datetime(rd, dayfirst=True).date() if not pd.isna(rd) else None
+                except Exception:
+                    sd = None
+                unmatched.append((raw_code, sd, 'PETROTRADE', source_file, upload_log_id))
             continue
 
         raw_date = row.get('DATE')
@@ -535,60 +594,89 @@ def ingest_petrotrade(conn, df, source_file):
     conn.commit()
     print(f"  ✓ {len(records)} Petrotrade records upserted ({skipped} skipped)")
 
+    if unmatched:
+        with conn.cursor() as cur:
+            execute_values(cur, """
+                INSERT INTO unmatched_status_rows
+                  (raw_site_code, sale_date, sheet_name, source_file, upload_log_id)
+                VALUES %s
+            """, unmatched)
+        conn.commit()
+        print(f"  ⚠ {len(unmatched)} PETROTRADE rows logged as unmatched")
+
 
 # ─────────────────────────────────────────────────────────────
 # STEP 5: INGEST MARGIN DATA
 # ─────────────────────────────────────────────────────────────
 
-def ingest_margin(conn, df, source_file, period_month=None):
-    print("▶ Ingesting MARGIN (Dynamics) data...")
+def ingest_margin(conn, df, source_file, period_month=None, upload_log_id=None):
+    """Ingest MARGIN sheet — same monthly shape as VOLUME BUDGET.
+    Columns: SITE CODE, SITE NAME, Site name Dynamics, Jan-26, Feb-26, ..., Dec-26
+    Each monthly cell holds the net margin per litre ($/L) for that month."""
+    print("▶ Ingesting MARGIN (monthly $/L per site)...")
 
-    if period_month is None:
-        # Default: current month
-        today = date.today()
-        period_month = first_of_month(today.year, today.month)
+    if upload_log_id:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM unmatched_status_rows WHERE upload_log_id = %s AND sheet_name = 'MARGIN'",
+                (upload_log_id,),
+            )
 
     with conn.cursor() as cur:
         cur.execute("SELECT site_code FROM sites")
         valid_codes = {r[0] for r in cur.fetchall()}
 
-    records = []
-    for _, row in df.iterrows():
-        code = safe_str(row.get('SITE CODE'))
-        if not code or code not in valid_codes:
-            continue
+    # Identify monthly columns (Jan-26, Feb-26, ...)
+    month_cols = {}
+    for col in df.columns:
+        dt = parse_budget_month_col(col)
+        if dt:
+            month_cols[col] = dt
 
-        records.append((
-            code,
-            period_month,
-            safe_float(row.get('INV Volume'), None),
-            safe_float(row.get('Average Selling Price'), None),
-            safe_float(row.get('Average Cost Per Litre'), None),
-            safe_float(row.get('UNIT GROSS MARGIN'), None),
-            safe_float(row.get('GROSS MARGIN'), None),
-            safe_float(row.get('UNIT TRANSPORT COST'), None),
-            safe_float(row.get('NET GROSS MARGIN'), None),
-            safe_float(row.get('Sales'), None),
-            source_file,
-        ))
+    records = []
+    unmatched = []
+    for _, row in df.iterrows():
+        raw_code = safe_str(row.get('SITE CODE'))
+        code = site_code(row.get('SITE CODE'))
+        if not code or code not in valid_codes:
+            if raw_code:
+                unmatched.append((raw_code, None, 'MARGIN', source_file, upload_log_id))
+            continue
+        for col, pm in month_cols.items():
+            val = row.get(col)
+            if val is None or pd.isna(val):
+                continue
+            mpl = safe_float(val, None)
+            if mpl is None:
+                continue
+            records.append((code, pm, mpl, source_file))
+
+    if unmatched:
+        with conn.cursor() as cur:
+            execute_values(cur, """
+                INSERT INTO unmatched_status_rows
+                  (raw_site_code, sale_date, sheet_name, source_file, upload_log_id)
+                VALUES %s
+            """, unmatched)
+        conn.commit()
+        print(f"  ⚠ {len(unmatched)} MARGIN rows logged as unmatched")
+
+    if not records:
+        print("  ℹ no margin rows to upsert")
+        return
 
     with conn.cursor() as cur:
         execute_values(cur, """
-            INSERT INTO margin_data
-              (site_code, period_month, inv_volume, avg_selling_price,
-               avg_cost_per_litre, unit_gross_margin, gross_margin,
-               unit_transport_cost, net_gross_margin, total_sales_value, source_file)
+            INSERT INTO site_margins
+              (site_code, period_month, margin_per_litre, source_file)
             VALUES %s
             ON CONFLICT (site_code, period_month) DO UPDATE SET
-                inv_volume          = EXCLUDED.inv_volume,
-                avg_selling_price   = EXCLUDED.avg_selling_price,
-                gross_margin        = EXCLUDED.gross_margin,
-                net_gross_margin    = EXCLUDED.net_gross_margin,
-                source_file         = EXCLUDED.source_file,
-                ingested_at         = NOW()
+                margin_per_litre = EXCLUDED.margin_per_litre,
+                source_file      = EXCLUDED.source_file,
+                ingested_at      = NOW()
         """, records)
     conn.commit()
-    print(f"  ✓ {len(records)} margin records upserted")
+    print(f"  ✓ {len(records)} site-month margin records upserted")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -601,6 +689,9 @@ def build_reconciliation(conn, period_month):
         # Clear old recon for this period
         cur.execute("DELETE FROM reconciliation_log WHERE period_month = %s", (period_month,))
 
+        # Invoiced-volume reconciliation no longer applies (margin sheet is now
+        # just $/L). Record the status volume so the recon table still summarises
+        # which sites traded in the period; variance is always 0.
         cur.execute("""
             INSERT INTO reconciliation_log
               (site_code, period_month, status_volume, invoiced_volume, variance_pct, is_flagged)
@@ -608,32 +699,17 @@ def build_reconciliation(conn, period_month):
                 s.site_code,
                 %s AS period_month,
                 COALESCE(sr.status_vol, 0) AS status_volume,
-                COALESCE(m.inv_volume, 0)  AS invoiced_volume,
-                CASE
-                    WHEN COALESCE(sr.status_vol, 0) = 0 THEN NULL
-                    ELSE ROUND(
-                        (COALESCE(sr.status_vol, 0) - COALESCE(m.inv_volume, 0))
-                        / NULLIF(sr.status_vol, 0) * 100, 2
-                    )
-                END AS variance_pct,
-                CASE
-                    WHEN ABS(
-                        COALESCE(sr.status_vol, 0) - COALESCE(m.inv_volume, 0)
-                    ) / NULLIF(COALESCE(sr.status_vol, 0), 0) * 100 > 2.0
-                    THEN TRUE
-                    ELSE FALSE
-                END AS is_flagged
+                COALESCE(sr.status_vol, 0) AS invoiced_volume,
+                0 AS variance_pct,
+                FALSE AS is_flagged
             FROM sites s
-            LEFT JOIN (
+            JOIN (
                 SELECT site_code, SUM(total_volume) AS status_vol
                 FROM sales
                 WHERE DATE_TRUNC('month', sale_date) = DATE_TRUNC('month', %s::DATE)
                 GROUP BY site_code
             ) sr ON s.site_code = sr.site_code
-            LEFT JOIN margin_data m
-                ON s.site_code = m.site_code AND m.period_month = %s
-            WHERE sr.status_vol IS NOT NULL OR m.inv_volume IS NOT NULL
-        """, (period_month, period_month, period_month))
+        """, (period_month, period_month))
     conn.commit()
 
     with conn.cursor() as cur:
@@ -717,10 +793,10 @@ def run_ingestion(excel_path: str, db_url: str, period_month_str: str = None,
             ingest_status_report(conn, sheets['STATUS REPORT'], source_file, upload_log_id)
 
         if wanted('petrotrade') and 'PETROTRADE' in sheets:
-            ingest_petrotrade(conn, sheets['PETROTRADE'], source_file)
+            ingest_petrotrade(conn, sheets['PETROTRADE'], source_file, upload_log_id)
 
         if wanted('margin') and 'MARGIN' in sheets:
-            ingest_margin(conn, sheets['MARGIN'], source_file, period_month)
+            ingest_margin(conn, sheets['MARGIN'], source_file, period_month, upload_log_id)
 
         # Post-ingestion
         build_reconciliation(conn, period_month)
@@ -729,13 +805,19 @@ def run_ingestion(excel_path: str, db_url: str, period_month_str: str = None,
         print(f"\n{'='*60}")
         print(f"  ✅ INGESTION COMPLETE")
         print(f"{'='*60}\n")
+        # Only report row counts for sheets that were actually ingested, so the
+        # UI doesn't imply that unselected sheets were written to the DB.
+        sheet_key_by_name = {v: k for k, v in SHEET_KEY_TO_NAME.items()}
+        row_counts = {}
+        for sheet_name, df in sheets.items():
+            key = sheet_key_by_name.get(sheet_name, sheet_name.lower().replace(' ', '_'))
+            if selected_sheets is None or key in selected_sheets:
+                row_counts[key] = len(df)
+
         return {
             "success": True,
             "period_month": str(period_month),
-            "row_counts": {
-                k.lower().replace(' ', '_'): len(v)
-                for k, v in sheets.items()
-            },
+            "row_counts": row_counts,
         }
 
     except Exception as e:

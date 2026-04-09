@@ -73,15 +73,28 @@ export async function GET(req: NextRequest) {
       grand_total AS (
         SELECT SUM(volume) AS total FROM site_totals
       ),
-      -- Net margin (cents per litre) per site from margin_data
+      -- Net margin (cents per litre) per site from monthly site_margins,
+      -- volume-weighted by actual sales volume in each overlapping month.
+      site_margin_monthly_sales AS (
+        SELECT site_code,
+               DATE_TRUNC('month', sale_date)::DATE AS m,
+               SUM(total_volume) AS volume
+        FROM sales
+        WHERE sale_date >= $${nextOffset + 1}::DATE
+          AND sale_date <= $${nextOffset + 2}::DATE
+        GROUP BY site_code, DATE_TRUNC('month', sale_date)
+      ),
       site_margin AS (
         SELECT
-          m.site_code,
-          ROUND((SUM(m.net_gross_margin) / NULLIF(SUM(m.inv_volume), 0) * 100)::NUMERIC, 2) AS net_margin_cpl
-        FROM margin_data m
-        WHERE m.period_month >= DATE_TRUNC('month', $${nextOffset + 1}::DATE)
-          AND m.period_month <= DATE_TRUNC('month', $${nextOffset + 2}::DATE)
-        GROUP BY m.site_code
+          sm.site_code,
+          ROUND((SUM(sm.margin_per_litre * COALESCE(ms.volume, 0))
+                 / NULLIF(SUM(COALESCE(ms.volume, 0)), 0) * 100)::NUMERIC, 2) AS net_margin_cpl
+        FROM site_margins sm
+        LEFT JOIN site_margin_monthly_sales ms
+          ON ms.site_code = sm.site_code AND ms.m = sm.period_month
+        WHERE sm.period_month >= DATE_TRUNC('month', $${nextOffset + 1}::DATE)
+          AND sm.period_month <= DATE_TRUNC('month', $${nextOffset + 2}::DATE)
+        GROUP BY sm.site_code
       ),
       -- Pro-rated budget for the queried date range: for each (site, month)
       -- overlapping the range, take (overlap_days / calendar_days * monthly_budget).
@@ -97,7 +110,7 @@ export async function GET(req: NextRequest) {
             )
           ) AS budget_volume,
           SUM(
-            COALESCE(vb.stretch_volume, vb.budget_volume * 1.1) / bc.calendar_days::NUMERIC *
+            (vb.budget_volume * 1.1) / bc.calendar_days::NUMERIC *
             GREATEST(0,
               (LEAST((bc.period_month + INTERVAL '1 month' - INTERVAL '1 day')::DATE,
                      $${nextOffset + 2}::DATE)

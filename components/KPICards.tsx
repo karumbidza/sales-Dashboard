@@ -14,6 +14,13 @@ function fmtPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
+function fmtVolM(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M L`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K L`;
+  return `${n.toFixed(0)} L`;
+}
+
 function fmtRev(n: number | null | undefined): string {
   if (n == null) return '—';
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -31,6 +38,22 @@ function badgeClass(pct: number | null): string {
 function growthColor(n: number | null): string {
   if (n == null) return 'text-gray-400';
   return n >= 0 ? 'text-emerald-600' : 'text-red-600';
+}
+
+/** Colored "+3 sites" / "−2 sites" / "±0 sites" pill given current and prior counts. */
+function siteDelta(current: number | null | undefined, prior: number | null | undefined): React.ReactNode | null {
+  if (current == null || prior == null) return null;
+  const d = current - prior;
+  if (d === 0) {
+    return <span className="font-semibold text-gray-500">±0 sites</span>;
+  }
+  const sign = d > 0 ? '+' : '−';
+  const color = d > 0 ? 'text-emerald-600' : 'text-red-600';
+  return (
+    <span className={`font-semibold ${color}`}>
+      {sign}{Math.abs(d)} site{Math.abs(d) === 1 ? '' : 's'}
+    </span>
+  );
 }
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
@@ -111,16 +134,21 @@ const icons = {
 
 interface CardProps {
   label: string;
-  value: string;
-  sub?: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
   badgePct?: number | null;
   badgeText?: string;
   growth?: number | null;
+  /** Trailing text after the growth %. Defaults to "vs prior". */
+  growthLabel?: string;
   icon: React.ReactNode;
   highlight?: boolean;
+  extra?: React.ReactNode;
+  /** Tooltip text shown on a small (i) icon next to the label */
+  hint?: string;
 }
 
-function KPICard({ label, value, sub, badgePct, badgeText, growth, icon, highlight }: CardProps) {
+function KPICard({ label, value, sub, badgePct, badgeText, growth, growthLabel, icon, highlight, extra, hint }: CardProps) {
   const badge = badgeText ?? (badgePct != null ? fmtVsBudget(badgePct) : null);
   return (
     <div
@@ -141,7 +169,17 @@ function KPICard({ label, value, sub, badgePct, badgeText, growth, icon, highlig
       </div>
 
       {/* Label */}
-      <p className="kpi-label mb-1">{label}</p>
+      <p className="kpi-label mb-1 flex items-center gap-1">
+        {label}
+        {hint && (
+          <span
+            title={hint}
+            className="inline-flex items-center justify-center w-3 h-3 rounded-full border border-gray-300 text-[8px] text-gray-400 cursor-help font-semibold leading-none"
+          >
+            i
+          </span>
+        )}
+      </p>
 
       {/* Value */}
       <p className="kpi-value tabnum">{value}</p>
@@ -155,11 +193,14 @@ function KPICard({ label, value, sub, badgePct, badgeText, growth, icon, highlig
       {growth != null && (
         <p className={`text-[11px] font-semibold mt-2 ${growthColor(growth)}`}>
           {growth >= 0
-            ? <span>&#9650; {fmtPct(growth)} vs prior</span>
-            : <span>&#9660; {fmtPct(Math.abs(growth))} vs prior</span>
+            ? <span>&#9650; {fmtPct(growth)} {growthLabel ?? 'vs prior'}</span>
+            : <span>&#9660; {fmtPct(Math.abs(growth))} {growthLabel ?? 'vs prior'}</span>
           }
         </p>
       )}
+
+      {/* Extra slot (e.g. projection) */}
+      {extra}
 
       {/* Highlight accent bar */}
       {highlight && (
@@ -173,11 +214,49 @@ function KPICard({ label, value, sub, badgePct, badgeText, growth, icon, highlig
 
 export default function KPICards({ kpis }: { kpis: any }) {
   if (!kpis) return null;
-  const { mtd, ytd, budget, growth, petrotrade, margin } = kpis;
+  const { mtd, ytd, budget, growth, petrotrade, margin, projection } = kpis;
+
+  // Projection color vs full-month budget
+  let projColor = '#374151';
+  const fmb = budget?.fullMonthBudget;
+  if (projection && fmb > 0) {
+    const diffPct = Math.abs(projection.value - fmb) / fmb;
+    if (diffPct <= 0.05)              projColor = '#d97706'; // amber (within 5%)
+    else if (projection.value > fmb)  projColor = '#16a34a'; // green
+    else                              projColor = '#dc2626'; // red
+  }
+
+  const projectionExtra = projection ? (
+    <div
+      title="Based on day-of-week weighted run-rate using last 90 days. Confidence band ±5%."
+      className="mt-2 pt-2 border-t border-gray-100"
+    >
+      <p style={{ fontSize: 11, color: projColor, fontWeight: 500 }} className="tabnum">
+        {projection.isNextMonth
+          ? `${projection.label}: ~${fmtVolM(projection.value)}`
+          : `Projected: ~${fmtVolM(projection.value)}`}
+        {projection.isNextMonth && (
+          <span className="ml-1.5 text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded uppercase tracking-wide">
+            Next month
+          </span>
+        )}
+      </p>
+    </div>
+  ) : null;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
 
+      {/* 1. Active Sites */}
+      <KPICard
+        icon={icons.store}
+        label="Active Sites"
+        hint="Sites that submitted at least one status report in the selected period. Source of truth for how many stations are operational."
+        value={String(mtd?.activeSites ?? '—')}
+        sub={`${mtd?.tradingDays ?? 0} days reporting`}
+      />
+
+      {/* 2. MTD Volume */}
       <KPICard
         icon={icons.barrel}
         label="MTD Volume"
@@ -187,50 +266,90 @@ export default function KPICards({ kpis }: { kpis: any }) {
           : `Budget: ${fmtVol(budget?.mtdBudget)} L`}
         badgePct={budget?.vsBudgetPct}
         highlight
+        extra={projectionExtra}
       />
 
-      <KPICard
-        icon={icons.chart}
-        label="YTD Volume"
-        value={`${fmtVol(ytd?.volume)} L`}
-        sub={`YTD vs pro-rata budget: ${fmtVsBudget(ytd?.vsBudgetPct)}`}
-        badgePct={ytd?.vsBudgetPct}
-        growth={growth?.ytdGrowthPct}
-      />
-
-      <KPICard
-        icon={icons.target}
-        label="Vs Stretch"
-        value={fmtVsBudget(budget?.vsStretchPct)}
-        sub="vs pro-rated stretch target"
-        badgePct={budget?.vsStretchPct}
-        badgeText={(budget?.vsStretchPct ?? 0) >= 100 ? 'ACHIEVED' : undefined}
-      />
-
-      <KPICard
-        icon={icons.trending}
-        label="MTD Growth"
-        value={growth?.mtdGrowthPct != null
-          ? `${growth.mtdGrowthPct >= 0 ? '+' : ''}${fmtPct(growth.mtdGrowthPct)}`
-          : '—'}
-        sub={`Prior: ${fmtVol(growth?.priorMtdVolume)} L`}
-        growth={growth?.mtdGrowthPct}
-      />
-
+      {/* 3. Average Daily Sales */}
       <KPICard
         icon={icons.lightning}
-        label="Avg Daily"
+        label="Avg Daily Sales"
         value={`${fmtVol(mtd?.avgDaily)} L`}
         sub={`${mtd?.tradingDays ?? 0} days · ${mtd?.activeSites ?? 0} sites`}
       />
 
+      {/* 4. Vs Stretch + Vs Budget (dual stat) */}
+      {(() => {
+        const vsStretch = budget?.vsStretchPct;
+        const vsBudget  = budget?.vsBudgetPct;
+        const colorOf = (pct: number | null | undefined) =>
+          pct == null ? '#9ca3af' : pct >= 100 ? '#16a34a' : pct >= 85 ? '#d97706' : '#dc2626';
+        return (
+          <KPICard
+            icon={icons.target}
+            label="MTD Targets"
+            hint="Stretch target = Budget × 1.10. Both percentages are pro-rated to the elapsed period."
+            badgeText={(vsStretch ?? 0) >= 100 ? 'STRETCH ACHIEVED' : (vsBudget ?? 0) >= 100 ? 'BUDGET MET' : undefined}
+            badgePct={vsStretch}
+            value={
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Vs Stretch</p>
+                  <p className="text-2xl font-bold tabnum leading-tight" style={{ color: colorOf(vsStretch) }}>
+                    {fmtVsBudget(vsStretch)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Vs Budget</p>
+                  <p className="text-2xl font-bold tabnum leading-tight" style={{ color: colorOf(vsBudget) }}>
+                    {fmtVsBudget(vsBudget)}
+                  </p>
+                </div>
+              </div>
+            }
+          />
+        );
+      })()}
+
+      {/* 5. MoM Growth */}
       <KPICard
-        icon={icons.dollar}
-        label="MTD Revenue"
-        value={fmtRev(mtd?.revenue)}
-        sub="Total invoiced revenue"
+        icon={icons.trending}
+        label="MoM Growth"
+        hint="Month-on-month volume change vs the same elapsed window last month, anchored on the report's selected end date."
+        value={growth?.mtdGrowthPct != null
+          ? `${growth.mtdGrowthPct >= 0 ? '+' : ''}${fmtPct(growth.mtdGrowthPct)}`
+          : '—'}
+        sub={(() => {
+          const delta = siteDelta(mtd?.activeSites, growth?.priorMtdActiveSites);
+          const priorTxt = `${fmtVol(growth?.priorMtdVolume)} L last month`;
+          return delta ? <>{delta} · {priorTxt}</> : priorTxt;
+        })()}
+        growth={growth?.mtdGrowthPct}
+        growthLabel="vs prior month"
       />
 
+      {/* 6. Avg Margin */}
+      <KPICard
+        icon={icons.calendar}
+        label="Avg Margin"
+        hint="Volume-weighted $/L from the MARGIN sheet. The site count here is only sites that have a margin row this month — not the same as Active Sites (which counts everything that traded)."
+        value={margin?.avgCplPerSite != null
+          ? `$${(margin.avgCplPerSite / 100).toFixed(2)}/L`
+          : '—'}
+        sub={margin?.sitesWithMargin
+          ? `${margin.sitesWithMargin} of ${mtd?.activeSites ?? '?'} active sites have margin data`
+          : 'Net gross margin'}
+      />
+
+      {/* 7. Cash Ratio */}
+      <KPICard
+        icon={icons.cash}
+        label="Cash Ratio"
+        hint="Cash collected ÷ total revenue. Sub line shows non-cash split: coupons and cards."
+        value={mtd?.cashRatio != null ? `${(mtd.cashRatio * 100).toFixed(1)}%` : '—'}
+        sub={`Coupon: ${fmtVol(mtd?.couponVolume)} L · Card: ${fmtVol(mtd?.cardVolume)} L`}
+      />
+
+      {/* 8. Petrotrade */}
       <KPICard
         icon={icons.handshake}
         label="Petrotrade Vol"
@@ -238,29 +357,39 @@ export default function KPICards({ kpis }: { kpis: any }) {
         sub={`Margin: $${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}`}
       />
 
-      <KPICard
-        icon={icons.cash}
-        label="Cash Ratio"
-        value={mtd?.cashRatio != null ? `${(mtd.cashRatio * 100).toFixed(1)}%` : '—'}
-        sub="Cash / total revenue"
-      />
+      {/* 9. Redan Flexi */}
+      {(() => {
+        const cy = mtd?.flexVolume;
+        const py = growth?.priorMtdFlexVolume;
+        const flexGrowth = (cy != null && py != null && py > 0)
+          ? ((cy - py) / py) * 100
+          : null;
+        return (
+          <KPICard
+            icon={icons.dollar}
+            label="Redan Flexi Volume"
+            hint="Flexi blend + flexi diesel volume for the selected period."
+            value={`${fmtVol(cy)} L`}
+            sub={py != null ? `${fmtVol(py)} L last month` : 'Flexi blend + flexi diesel'}
+            growth={flexGrowth}
+            growthLabel="vs prior month"
+          />
+        );
+      })()}
 
+      {/* 10. YTD Volume */}
       <KPICard
-        icon={icons.store}
-        label="Active Sites"
-        value={String(mtd?.activeSites ?? '—')}
-        sub={`${mtd?.tradingDays ?? 0} days reporting`}
-      />
-
-      <KPICard
-        icon={icons.calendar}
-        label="Avg Margin / Site"
-        value={margin?.avgCplPerSite != null
-          ? `${margin.avgCplPerSite.toFixed(1)} ¢/L`
-          : '—'}
-        sub={margin?.sitesWithMargin
-          ? `${margin.sitesWithMargin} sites · net gross margin`
-          : 'Net gross margin'}
+        icon={icons.chart}
+        label="YTD Volume"
+        value={`${fmtVol(ytd?.volume)} L`}
+        sub={(() => {
+          const delta = siteDelta(ytd?.activeSites, growth?.priorYtdActiveSites);
+          const priorTxt = `${fmtVol(growth?.priorYtdVolume)} L last year`;
+          return delta ? <>{delta} · {priorTxt}</> : priorTxt;
+        })()}
+        badgePct={ytd?.vsBudgetPct}
+        growth={growth?.ytdGrowthPct}
+        growthLabel="vs prior year"
       />
 
     </div>

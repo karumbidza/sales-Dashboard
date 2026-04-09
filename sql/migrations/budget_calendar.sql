@@ -24,7 +24,7 @@ SELECT
   vb.budget_volume,
   vb.stretch_volume,
   ROUND(vb.budget_volume / bc.calendar_days, 4) AS daily_budget_rate,
-  ROUND(COALESCE(vb.stretch_volume, vb.budget_volume * 1.1)
+  ROUND((vb.budget_volume * 1.1)
         / bc.calendar_days, 4)                  AS daily_stretch_rate
 FROM volume_budget vb
 JOIN budget_calendar bc ON vb.budget_month = bc.period_month;

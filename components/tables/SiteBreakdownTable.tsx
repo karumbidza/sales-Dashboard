@@ -1,7 +1,10 @@
 // components/tables/SiteBreakdownTable.tsx
 'use client';
 
+import { useState, useEffect } from 'react';
 import { fmtVsBudget, vsBudgetBadgeClass } from '@/lib/formatters';
+
+const PAGE_SIZE = 20;
 
 function fmtVol(n: number)  { return n?.toLocaleString('en', { maximumFractionDigits: 0 }) ?? '—'; }
 function fmtRev(n: number)  { return n != null ? `$${n.toLocaleString('en', { maximumFractionDigits: 0 })}` : '—'; }
@@ -12,12 +15,21 @@ function PctBadge({ value }: { value: number | null }) {
   return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${vsBudgetBadgeClass(value)}`}>{fmtVsBudget(value)}</span>;
 }
 
-interface Props { data: any[]; type: 'territory' | 'sites'; }
+interface Props { data: any[]; type: 'territory' | 'sites'; paginate?: boolean; }
 
-export default function SiteBreakdownTable({ data, type }: Props) {
+export default function SiteBreakdownTable({ data, type, paginate = false }: Props) {
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [data]);
+
   if (!data?.length) return (
     <div className="text-center py-8 text-gray-300 text-sm">No data</div>
   );
+
+  const total     = data.length;
+  const pageCount = paginate ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
+  const visible   = paginate ? data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : data;
+  const start     = paginate ? (page - 1) * PAGE_SIZE + 1 : 1;
+  const end       = paginate ? Math.min(page * PAGE_SIZE, total) : total;
 
   if (type === 'territory') {
     return (
@@ -42,7 +54,7 @@ export default function SiteBreakdownTable({ data, type }: Props) {
                 <td className="px-3 py-2.5 text-right"><PctBadge value={t.vsBudgetPct} /></td>
                 <td className="px-3 py-2.5 text-right"><PctBadge value={t.vsStretchPct} /></td>
                 <td className="px-3 py-2.5 text-right font-mono text-gray-700">
-                  {t.netMarginCpl != null ? `${t.netMarginCpl.toFixed(1)} ¢/L` : '—'}
+                  {t.netMarginCpl != null ? `$${(t.netMarginCpl / 100).toFixed(2)}/L` : '—'}
                 </td>
                 <td className="px-3 py-2.5 text-right text-xs text-gray-500">{fmtPct(t.contributionPct)}</td>
                 <td className="px-3 py-2.5 text-right text-xs text-blue-600">{fmtVol(t.dieselVol)}</td>
@@ -67,17 +79,18 @@ export default function SiteBreakdownTable({ data, type }: Props) {
 
   // Sites breakdown
   return (
+    <div>
     <div className="overflow-x-auto rounded-lg border border-gray-100">
       <table className="min-w-full text-sm">
         <thead className="bg-[#1e3a5f]">
           <tr>
-            {['Site', 'Territory', 'MOSO', 'Volume (L)', 'Revenue', 'Avg Daily', 'Budget', 'Vs Budget', 'Cash %', 'Coupon (L)', 'Card (L)', 'Flex (L)', 'Net Margin'].map(h => (
+            {['Site', 'Territory', 'MOSO', 'Volume (L)', 'Revenue', 'Avg Daily', 'Budget', 'Vs Budget', 'Cash %', 'Coupon + Card (L)', 'Flex (L)', 'Net Margin'].map(h => (
               <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-white whitespace-nowrap">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {data.map((s, i) => (
+          {visible.map((s, i) => (
             <tr key={s.siteCode || i} className="border-b border-gray-50 hover:bg-blue-50">
               <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{s.siteName}</td>
               <td className="px-3 py-2.5 text-gray-500 text-xs">{s.territoryName || '—'}</td>
@@ -90,14 +103,42 @@ export default function SiteBreakdownTable({ data, type }: Props) {
               <td className="px-3 py-2.5 text-right font-mono text-gray-400">{fmtVol(s.budgetVolume)}</td>
               <td className="px-3 py-2.5 text-right"><PctBadge value={s.vsBudgetPct} /></td>
               <td className="px-3 py-2.5 text-right text-xs text-gray-500">{fmtPct(s.cashRatioPct)}</td>
-              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-500">{s.couponVolume > 0 ? fmtVol(s.couponVolume) : '—'}</td>
-              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-500">{s.cardVolume   > 0 ? fmtVol(s.cardVolume)   : '—'}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-500">
+                {((s.couponVolume || 0) + (s.cardVolume || 0)) > 0
+                  ? fmtVol((s.couponVolume || 0) + (s.cardVolume || 0))
+                  : '—'}
+              </td>
               <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-500">{s.flexVolume   > 0 ? fmtVol(s.flexVolume)   : '—'}</td>
-              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-700">{s.netMarginCpl != null ? `${s.netMarginCpl.toFixed(1)} ¢/L` : '—'}</td>
+              <td className="px-3 py-2.5 text-right text-xs font-mono text-gray-700">{s.netMarginCpl != null ? `$${(s.netMarginCpl / 100).toFixed(2)}/L` : '—'}</td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+    {paginate && (
+      <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+        <span>Showing {start}–{end} of {total}</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            className="px-2 py-1 border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50"
+          >
+            ← Prev
+          </button>
+          <span className="font-mono">{page} / {pageCount}</span>
+          <button
+            type="button"
+            disabled={page >= pageCount}
+            onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+            className="px-2 py-1 border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    )}
     </div>
   );
 }

@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         t.tm_code      AS territory_code,
         t.tm_name      AS territory_name,
         vb.budget_volume,
-        vb.stretch_volume
+        (vb.budget_volume * 1.1) AS stretch_volume
       FROM volume_budget vb
       JOIN sites si ON vb.site_code = si.site_code
       LEFT JOIN territories t ON si.territory_id = t.id

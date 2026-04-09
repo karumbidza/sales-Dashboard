@@ -16,7 +16,7 @@ export async function GET() {
           (SELECT COUNT(*) FROM sites)              AS sites,
           (SELECT COUNT(*) FROM volume_budget)      AS budget_records,
           (SELECT COUNT(*) FROM petrotrade_sales)   AS petrotrade_rows,
-          (SELECT COUNT(*) FROM margin_data)        AS margin_records,
+          (SELECT COUNT(*) FROM site_margins)       AS margin_records,
           (SELECT COUNT(*) FROM reconciliation_log) AS recon_records,
           (SELECT COUNT(*) FROM territories)        AS territories,
           (SELECT COUNT(*) FROM reconciliation_log WHERE is_flagged) AS recon_flags

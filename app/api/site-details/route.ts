@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     const budget = await queryOne<any>(`
       SELECT
         ROUND(SUM(budget_volume)::NUMERIC, 0)  AS budget_volume,
-        ROUND(SUM(stretch_volume)::NUMERIC, 0) AS stretch_volume,
+        ROUND(SUM(budget_volume * 1.1)::NUMERIC, 0) AS stretch_volume,
         AVG(margin_budget)                     AS margin_budget
       FROM volume_budget
       WHERE site_code = $1
@@ -84,18 +84,25 @@ export async function GET(req: NextRequest) {
       WHERE site_code = $1 AND sale_date BETWEEN $2 AND $3
     `, [siteCode, dateFrom, dateTo]);
 
-    // Margin/invoiced
+    // Margin (monthly $/L from site_margins, weighted by actual sales volume)
     const margin = await queryOne<any>(`
+      WITH monthly_sales AS (
+        SELECT DATE_TRUNC('month', sale_date)::DATE AS m,
+               SUM(total_volume) AS volume
+        FROM sales
+        WHERE site_code = $1 AND sale_date BETWEEN $2 AND $3
+        GROUP BY DATE_TRUNC('month', sale_date)
+      )
       SELECT
-        ROUND(SUM(inv_volume)::NUMERIC, 0)       AS inv_volume,
-        AVG(avg_selling_price)                   AS avg_price,
-        AVG(unit_gross_margin)                   AS unit_margin,
-        ROUND(SUM(gross_margin)::NUMERIC, 2)     AS gross_margin,
-        AVG(net_gross_margin)                    AS net_margin
-      FROM margin_data
-      WHERE site_code = $1
-        AND period_month BETWEEN DATE_TRUNC('month', $2::DATE)
-                             AND DATE_TRUNC('month', $3::DATE)
+        ROUND(SUM(COALESCE(ms.volume, 0))::NUMERIC, 0)                    AS inv_volume,
+        ROUND(AVG(sm.margin_per_litre)::NUMERIC, 4)                       AS unit_margin,
+        ROUND(SUM(sm.margin_per_litre * COALESCE(ms.volume, 0))::NUMERIC, 2) AS gross_margin,
+        ROUND(AVG(sm.margin_per_litre)::NUMERIC, 4)                       AS net_margin
+      FROM site_margins sm
+      LEFT JOIN monthly_sales ms ON ms.m = sm.period_month
+      WHERE sm.site_code = $1
+        AND sm.period_month BETWEEN DATE_TRUNC('month', $2::DATE)
+                                AND DATE_TRUNC('month', $3::DATE)
     `, [siteCode, dateFrom, dateTo]);
 
     // Reconciliation status
@@ -143,7 +150,7 @@ export async function GET(req: NextRequest) {
       petrotrade: { volume: parseFloat(petrotrade?.volume || 0), margin: parseFloat(petrotrade?.margin || 0) },
       margin: margin ? {
         inv_volume:  parseFloat(margin.inv_volume || 0),
-        avg_price:   parseFloat(margin.avg_price || 0),
+        avg_price:   null,
         unit_margin: parseFloat(margin.unit_margin || 0),
         gross_margin: parseFloat(margin.gross_margin || 0),
         net_margin:  parseFloat(margin.net_margin || 0),

@@ -322,7 +322,7 @@ const SCHEMA: { table: string; sheet: string; sheetTone: string; rows: string; p
   { table: 'sales',              sheet: 'STATUS REPORT', sheetTone: 'green', rows: '50K+',    purpose: 'Daily fuel sales — PRIMARY source of truth for all KPIs' },
   { table: 'volume_budget',      sheet: 'VOLUME BUDGET', sheetTone: 'blue',  rows: '900+',    purpose: 'Monthly budget & stretch targets per site, MOSO classification' },
   { table: 'petrotrade_sales',   sheet: 'PETROTRADE',    sheetTone: 'blue',  rows: '1K+',     purpose: 'Partner coupon volumes at fixed $0.05/L margin' },
-  { table: 'margin_data',        sheet: 'MARGIN',        sheetTone: 'amber', rows: '67+',     purpose: 'Dynamics invoiced volumes — reconciled vs Status Report' },
+  { table: 'site_margins',       sheet: 'MARGIN',        sheetTone: 'amber', rows: '900+',    purpose: 'Monthly $/litre net margin per site (same shape as VOLUME BUDGET)' },
   { table: 'reconciliation_log', sheet: 'Auto-built',    sheetTone: 'amber', rows: 'Dynamic', purpose: 'Control gap: status vs invoiced — flags >2% variance automatically' },
   { table: 'reports',            sheet: 'App',           sheetTone: 'gray',  rows: 'Dynamic', purpose: 'PDF report metadata and generation history' },
   { table: 'report_comments',    sheet: 'App',           sheetTone: 'gray',  rows: 'Dynamic', purpose: 'Analyst comments attached to reports, exported to PDF' },

@@ -144,28 +144,22 @@ CREATE INDEX idx_petrotrade_date ON petrotrade_sales(sale_date);
 CREATE INDEX idx_petrotrade_site_date ON petrotrade_sales(site_code, sale_date);
 
 -- ============================================================
--- 4. MARGIN / INVOICED DATA (Financial Position)
+-- 4. SITE MARGINS (monthly $/litre, like volume budget)
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS margin_data (
-  id BIGSERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS site_margins (
+  id SERIAL PRIMARY KEY,
   site_code VARCHAR(20) NOT NULL REFERENCES sites(site_code),
-  period_month DATE NOT NULL,                  -- first day of the month
-  inv_volume NUMERIC(12,3) DEFAULT 0,
-  avg_selling_price NUMERIC(10,6),
-  avg_cost_per_litre NUMERIC(10,6),
-  unit_gross_margin NUMERIC(10,6),
-  gross_margin NUMERIC(14,2),
-  unit_transport_cost NUMERIC(10,6),
-  net_gross_margin NUMERIC(10,6),
-  total_sales_value NUMERIC(14,2),
+  period_month DATE NOT NULL,                    -- first day of month
+  margin_per_litre NUMERIC(10,6) NOT NULL,       -- $/litre net margin
   source_file VARCHAR(255),
   ingested_at TIMESTAMPTZ DEFAULT NOW(),
 
   UNIQUE(site_code, period_month)
 );
 
-CREATE INDEX idx_margin_period ON margin_data(period_month);
+CREATE INDEX idx_site_margins_period ON site_margins(period_month);
+CREATE INDEX idx_site_margins_site_period ON site_margins(site_code, period_month);
 
 -- ============================================================
 -- 5. BUDGET & TARGETS
@@ -417,6 +411,6 @@ ON CONFLICT (tm_code) DO NOTHING;
 COMMENT ON TABLE sites IS 'Master site reference - all datasets must join here via site_code';
 COMMENT ON TABLE sales IS 'STATUS REPORT: Primary source of truth for fuel sales volumes';
 COMMENT ON TABLE petrotrade_sales IS 'Petrotrade coupon volumes (fixed $0.05/litre margin) - tracked separately';
-COMMENT ON TABLE margin_data IS 'Dynamics/accounting system: invoiced volumes for reconciliation';
+COMMENT ON TABLE site_margins IS 'Monthly $/litre net margin per site (from MARGIN sheet) — multiply by actual sales volume';
 COMMENT ON TABLE reconciliation_log IS 'Control gap: Status Report vs Invoiced Volume discrepancies';
 COMMENT ON MATERIALIZED VIEW mv_site_monthly_performance IS 'Pre-computed monthly site KPIs - refresh after each ingestion';

@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
           SELECT
             vb.budget_month::DATE AS period,
             ROUND(SUM(vb.budget_volume)::NUMERIC, 0)  AS budget_volume,
-            ROUND(SUM(vb.stretch_volume)::NUMERIC, 0) AS stretch_volume
+            ROUND(SUM(vb.budget_volume * 1.1)::NUMERIC, 0) AS stretch_volume
           FROM volume_budget vb
           JOIN sites si ON vb.site_code = si.site_code
           LEFT JOIN territories t ON si.territory_id = t.id
@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
       const budgetRows = await query<any>(`
         SELECT vb.budget_month::TEXT AS m,
                SUM(vb.budget_volume)  AS budget_volume,
-               SUM(COALESCE(vb.stretch_volume, vb.budget_volume * 1.1)) AS stretch_volume
+               SUM(vb.budget_volume * 1.1) AS stretch_volume
         FROM volume_budget vb
         JOIN sites si ON vb.site_code = si.site_code
         LEFT JOIN territories t ON si.territory_id = t.id

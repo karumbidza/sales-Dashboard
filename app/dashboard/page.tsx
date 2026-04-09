@@ -14,6 +14,9 @@ import DataManagementTab from '@/components/ui/DataManagementTab';
 import DatabaseViewerTab from '@/components/ui/DatabaseViewerTab';
 import UploadAuditTrail from '@/components/ui/UploadAuditTrail';
 import ReportGenerator from '@/components/ui/ReportGenerator';
+import UnmatchedRowsPanel from '@/components/ui/UnmatchedRowsPanel';
+import YearlyVolumeBudgetChart from '@/components/charts/YearlyVolumeBudgetChart';
+import TerritoryAnalysisChart from '@/components/charts/TerritoryAnalysisChart';
 
 export interface Filters {
   dateFrom: string;
@@ -25,15 +28,14 @@ export interface Filters {
 }
 
 function getDefaultFilters(): Filters {
-  // Default to last complete month of data (Mar 2026) rather than current
-  // month — avoids showing empty dashboard when data hasn't been uploaded yet.
-  // This updates automatically once newer data is ingested.
+  // Fallback used while /api/data-bounds is loading. Real default is the
+  // current month start → most recent date that has sales data, applied on
+  // mount once we know the latest sale_date in the DB.
   const today = new Date();
-  const dataMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   return {
-    dateFrom:  dataMonth.toISOString().split('T')[0],
-    dateTo:    new Date(dataMonth.getFullYear(), dataMonth.getMonth() + 1, 0)
-                 .toISOString().split('T')[0],
+    dateFrom:  monthStart.toISOString().split('T')[0],
+    dateTo:    today.toISOString().split('T')[0],
     territory: '',
     product:   '',
     siteCode:  '',
@@ -160,6 +162,26 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchAll(filters); }, [filters, fetchAll]);
 
+  // On first mount, anchor the date range on the latest sale_date in the DB
+  // so the default view is "this month so far, up to the most recent report"
+  // — independent of the wall clock.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/data-bounds')
+      .then(r => r.json())
+      .then(b => {
+        if (cancelled || !b?.maxDate) return;
+        const maxDate = b.maxDate as string; // YYYY-MM-DD
+        const monthStart = `${maxDate.slice(0, 7)}-01`;
+        setFilters(f => (f.dateTo === maxDate && f.dateFrom === monthStart)
+          ? f
+          : { ...f, dateFrom: monthStart, dateTo: maxDate });
+      })
+      .catch(() => { /* fall back to wall-clock default */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="min-h-screen" style={{ background: '#f4f6f9' }}>
 
@@ -253,8 +275,8 @@ export default function DashboardPage() {
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
               <div className="xl:col-span-2 card">
-                <h2 className="text-sm font-semibold text-gray-800 mb-4">Daily Volume Trend</h2>
-                <SalesTrendChart data={trend} type="daily" filters={filters} />
+                <h2 className="text-sm font-semibold text-gray-800 mb-4">Territory Analysis</h2>
+                <TerritoryAnalysisChart data={territories} />
               </div>
               <div className="card">
                 <h2 className="text-sm font-semibold text-gray-800 mb-4">Territory Distribution</h2>
@@ -262,8 +284,16 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <Section title="Monthly Volume vs Budget">
-              <SalesTrendChart data={monthlyTrend} type="monthly" filters={filters} />
+            <Section title="Daily Volume Trend">
+              <SalesTrendChart data={trend} type="daily" filters={filters} />
+            </Section>
+
+            <Section>
+              <YearlyVolumeBudgetChart filters={{
+                territory: filters.territory,
+                moso:      filters.moso,
+                siteCode:  filters.siteCode,
+              }} />
             </Section>
 
             <Section title="Top 10 Sites by Volume">
@@ -278,9 +308,12 @@ export default function DashboardPage() {
 
         {/* SITES */}
         {!loading && activeTab === 'sites' && (
-          <Section title="Full Site Breakdown">
-            <SiteBreakdownTable data={topSites} type="sites" />
-          </Section>
+          <>
+            <UnmatchedRowsPanel />
+            <Section title="Full Site Breakdown">
+              <SiteBreakdownTable data={topSites} type="sites" paginate />
+            </Section>
+          </>
         )}
 
         {/* RECONCILIATION */}

@@ -32,7 +32,7 @@ REQUIRED_COLUMNS = {
         'DIESEL SALES ($)', 'BLEND SALES ($)', 'ULP SALES ($)',
     ],
     'PETROTRADE': ['SITE CODE', 'DATE', 'P.TRADE SALES (V)'],
-    'MARGIN': ['SITE CODE', 'INV Volume'],
+    'MARGIN': ['SITE CODE', 'SITE NAME'],
     'VOLUME BUDGET': ['SITE CODE', 'TM', 'MOSO'],
 }
 
@@ -42,10 +42,8 @@ WARN_COLUMNS = {
         'FLEX BLEND (V)', 'FLEX DIESEL (V)',
         'DIESEL DELIVERY', 'BLEND DELIVERIES',
     ],
-    'MARGIN': [
-        'Average Selling Price', 'Average Cost Per Litre',
-        'UNIT GROSS MARGIN', 'GROSS MARGIN',
-    ],
+    # MARGIN sheet now has monthly $/L columns (Jan-26..Dec-26) — no fixed
+    # warn columns; missing months are detected by ingest as empty cells.
 }
 
 MIN_ROW_COUNTS = {
@@ -234,7 +232,7 @@ def validate(excel_path: str, db_url: str = None):
         if known is not None and 'NAME INDEX' in sheets:
             df = sheets['NAME INDEX']
             if has_col(df, 'SITE CODE'):
-                file_codes = set(df['SITE CODE'].dropna().astype(str).str.strip())
+                file_codes = set(df['SITE CODE'].dropna().astype(str).str.strip().str.upper())
                 new_sites  = file_codes - known
                 if new_sites:
                     check('new_sites', 'NAME INDEX',
@@ -245,6 +243,40 @@ def validate(excel_path: str, db_url: str = None):
                     check('new_sites', 'NAME INDEX',
                           'New sites in file',
                           'pass', 'No new sites — all already in DB')
+
+        # ── Duplicate-name detector ────────────────────────
+        # Two NAME INDEX rows that share BUDGET but have different SITE CODEs
+        # are almost always a typo (e.g. CHA-008 + CHA-0008 both 'CHACHACHA').
+        # Block the upload and tell the user which pairs to fix.
+        if 'NAME INDEX' in sheets:
+            df = sheets['NAME INDEX']
+            if has_col(df, 'BUDGET') and has_col(df, 'SITE CODE'):
+                pairs = (
+                    df[['SITE CODE', 'BUDGET']]
+                    .dropna()
+                    .assign(
+                        code=lambda d: d['SITE CODE'].astype(str).str.strip().str.upper(),
+                        name=lambda d: d['BUDGET'].astype(str).str.strip().str.upper(),
+                    )
+                )
+                grouped = (
+                    pairs.groupby('name')['code'].nunique().reset_index(name='n_codes')
+                )
+                dup_names = grouped[grouped['n_codes'] > 1]['name'].tolist()
+                if dup_names:
+                    examples = []
+                    for name in dup_names[:5]:
+                        codes = sorted(pairs[pairs['name'] == name]['code'].unique())
+                        examples.append(f'{name} → {codes}')
+                    check('duplicate_names', 'NAME INDEX',
+                          'Duplicate site names with different codes',
+                          'error',
+                          f'{len(dup_names)} site name(s) appear under more than one code (likely typos): '
+                          + '; '.join(examples))
+                else:
+                    check('duplicate_names', 'NAME INDEX',
+                          'Duplicate site names with different codes',
+                          'pass', 'Each site name maps to exactly one code')
 
     # ── 9. SITE CODE column not blank ────────────────────────
     for sheet_name in ['STATUS REPORT', 'PETROTRADE', 'MARGIN']:

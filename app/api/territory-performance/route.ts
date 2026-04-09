@@ -48,17 +48,30 @@ export async function GET(req: NextRequest) {
         GROUP BY t.tm_code, t.tm_name
       ),
       grand AS (SELECT SUM(volume) AS grand_total FROM territory_totals),
-      -- Net margin (cents per litre) per territory from margin_data.
+      -- Net margin per territory from monthly site_margins,
+      -- volume-weighted by actual monthly sales volumes.
+      territory_margin_monthly_sales AS (
+        SELECT site_code,
+               DATE_TRUNC('month', sale_date)::DATE AS m,
+               SUM(total_volume) AS volume
+        FROM sales
+        WHERE sale_date >= $${nextOffset + 1}::DATE
+          AND sale_date <= $${nextOffset + 2}::DATE
+        GROUP BY site_code, DATE_TRUNC('month', sale_date)
+      ),
       territory_margin AS (
         SELECT
           t.tm_code,
-          ROUND((SUM(m.net_gross_margin) / NULLIF(SUM(m.inv_volume), 0) * 100)::NUMERIC, 2) AS net_margin_cpl,
-          ROUND(SUM(m.net_gross_margin)::NUMERIC, 2) AS net_margin_total
-        FROM margin_data m
-        JOIN sites si ON m.site_code = si.site_code
+          ROUND((SUM(sm.margin_per_litre * COALESCE(ms.volume, 0))
+                 / NULLIF(SUM(COALESCE(ms.volume, 0)), 0) * 100)::NUMERIC, 2) AS net_margin_cpl,
+          ROUND(SUM(sm.margin_per_litre * COALESCE(ms.volume, 0))::NUMERIC, 2) AS net_margin_total
+        FROM site_margins sm
+        JOIN sites si ON sm.site_code = si.site_code
         JOIN territories t ON si.territory_id = t.id
-        WHERE m.period_month >= DATE_TRUNC('month', $${nextOffset + 1}::DATE)
-          AND m.period_month <= DATE_TRUNC('month', $${nextOffset + 2}::DATE)
+        LEFT JOIN territory_margin_monthly_sales ms
+          ON ms.site_code = sm.site_code AND ms.m = sm.period_month
+        WHERE sm.period_month >= DATE_TRUNC('month', $${nextOffset + 1}::DATE)
+          AND sm.period_month <= DATE_TRUNC('month', $${nextOffset + 2}::DATE)
         GROUP BY t.tm_code
       ),
       -- Pro-rated budget for the queried date range, aggregated to territory.
@@ -74,7 +87,7 @@ export async function GET(req: NextRequest) {
             )
           )::NUMERIC, 0) AS budget_volume,
           ROUND(SUM(
-            COALESCE(vb.stretch_volume, vb.budget_volume * 1.1) / bc.calendar_days::NUMERIC *
+            (vb.budget_volume * 1.1) / bc.calendar_days::NUMERIC *
             GREATEST(0,
               (LEAST((bc.period_month + INTERVAL '1 month' - INTERVAL '1 day')::DATE,
                      $${nextOffset + 2}::DATE)

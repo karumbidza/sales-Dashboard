@@ -77,7 +77,7 @@ function buildReportHTML(data: any): string {
     const innerW = W - P.l - P.r;
     const innerH = H - P.t - P.b;
     if (!rows || rows.length === 0) {
-      return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="xMinYMid meet">
+      return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
         <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No data for this month</text>
       </svg>`;
     }
@@ -89,17 +89,26 @@ function buildReportHTML(data: any): string {
 
     // Map by day-of-month so days without data still get a slot
     const byDay: Record<number, any> = {};
+    let maxDayWithData = 0;
     for (const r of rows) {
       const d = parseInt(String(r.date || r.period || '').slice(8, 10), 10);
-      if (Number.isFinite(d)) byDay[d] = r;
+      if (Number.isFinite(d)) {
+        byDay[d] = r;
+        if (Number(r?.actual_volume || 0) > 0 && d > maxDayWithData) maxDayWithData = d;
+      }
     }
 
-    const totals = Array.from({ length: info.monthEndDay }, (_, i) => {
+    // Only render through the last day that actually has data — otherwise the
+    // bars cluster on the left and 70% of the chart is empty white space.
+    // Falls back to the full month if for some reason no day has data yet.
+    const lastDay = maxDayWithData > 0 ? maxDayWithData : info.monthEndDay;
+
+    const totals = Array.from({ length: lastDay }, (_, i) => {
       const r = byDay[i + 1];
       return Number(r?.actual_volume || 0);
     });
     const yMax = Math.max(...totals, dailyRate, dailyStretch) * 1.12 || 1;
-    const xStep = innerW / info.monthEndDay;
+    const xStep = innerW / lastDay;
     const barW  = Math.max(4, xStep * 0.7);
     const yScale = (v: number) => P.t + innerH - (v / yMax) * innerH;
 
@@ -121,7 +130,7 @@ function buildReportHTML(data: any): string {
     const bars: string[] = [];
     const dots: string[] = [];
     const xLbls: string[] = [];
-    for (let day = 1; day <= info.monthEndDay; day++) {
+    for (let day = 1; day <= lastDay; day++) {
       const r = byDay[day];
       const cx = P.l + xStep * (day - 0.5);
       const left = cx - barW / 2;
@@ -151,8 +160,9 @@ function buildReportHTML(data: any): string {
         dots.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>`);
       }
 
-      // X labels every 2 days
-      if (day === 1 || day % 2 === 0 || day === info.monthEndDay) {
+      // X labels — every day if range is short, every 2 days otherwise
+      const labelStep = lastDay <= 14 ? 1 : 2;
+      if (day === 1 || day % labelStep === 0 || day === lastDay) {
         xLbls.push(`<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="8" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
       }
     }
@@ -225,6 +235,257 @@ function buildReportHTML(data: any): string {
   };
 
   // ── Inline SVG: territory donut ────────────────────────────────────────
+  // Yearly Volume vs Budget vs Last Year — three grouped bars per month,
+  // matches the dashboard chart 1:1 (vs-budget % above completed months,
+  // softer styling for future months, dashed today divider).
+  const yearlyVolumeBudgetSVG = (rows: any[], year: number, priorYear: number): string => {
+    const W = 960, H = 280;
+    const P = { l: 48, r: 12, t: 22, b: 28 };
+    const innerW = W - P.l - P.r;
+    const innerH = H - P.t - P.b;
+
+    if (!rows || rows.length === 0) {
+      return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%">
+        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No data</text>
+      </svg>`;
+    }
+
+    // Y scale based on max across all three series
+    const allVals: number[] = [];
+    rows.forEach((r: any) => {
+      if (r.actualCY?.total != null) allVals.push(r.actualCY.total);
+      if (r.actualPY?.total != null) allVals.push(r.actualPY.total);
+      if (r.budgetCY    != null)     allVals.push(r.budgetCY);
+    });
+    const yMax = Math.max(...allVals, 1) * 1.1;
+
+    const yScale = (v: number) => P.t + innerH - (v / yMax) * innerH;
+    const groupW = innerW / 12;
+    const barGap = 2;
+    const barW   = (groupW - 2 * barGap - 6) / 3;
+
+    // Y-axis ticks (5 levels)
+    const yTicks: string[] = [];
+    for (let i = 0; i <= 4; i++) {
+      const v = yMax * (i / 4);
+      const y = yScale(v);
+      const label = v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M`
+                  : v >= 1_000     ? `${Math.round(v / 1_000)}K`
+                  : Math.round(v).toString();
+      yTicks.push(`
+        <line x1="${P.l}" x2="${W - P.r}" y1="${y}" y2="${y}"
+              stroke="#f1f5f9" stroke-dasharray="3 3"/>
+        <text x="${P.l - 6}" y="${y + 3}" text-anchor="end"
+              font-size="9" fill="#9ca3af">${label}</text>
+      `);
+    }
+
+    // Find last completed month index for the today divider
+    let lastCompletedIdx = -1;
+    rows.forEach((r: any, i: number) => { if (!r.isFuture) lastCompletedIdx = i; });
+
+    // Bars
+    const COLORS = { actualCY: '#1e40af', budgetCY: '#f59e0b', actualPY: '#94a3b8' };
+    const bars: string[] = [];
+    const labels: string[] = [];
+
+    rows.forEach((r: any, i: number) => {
+      const groupX = P.l + i * groupW + 3;
+      const cx = groupX + groupW / 2;
+
+      const cyVal  = r.actualCY?.total ?? null;
+      const budVal = r.budgetCY ?? null;
+      const pyVal  = r.actualPY?.total ?? null;
+
+      const cyOpacity  = r.isFuture ? 0   : 1;
+      const refOpacity = r.isFuture ? 0.45 : 1;
+
+      // Actual CY bar
+      if (cyVal != null && cyOpacity > 0) {
+        const y = yScale(cyVal);
+        const h = (P.t + innerH) - y;
+        bars.push(`<rect x="${groupX}" y="${y}" width="${barW}" height="${h}"
+                         fill="${COLORS.actualCY}" rx="2"/>`);
+
+        // vs-budget % label above the bar
+        if (budVal != null && budVal > 0) {
+          const pct = ((cyVal - budVal) / budVal) * 100;
+          const color = pct >= 0 ? '#16a34a' : '#dc2626';
+          const sign  = pct >= 0 ? '+' : '';
+          labels.push(`<text x="${groupX + barW / 2}" y="${y - 4}" text-anchor="middle"
+                            font-size="9" font-weight="700" fill="${color}">${sign}${pct.toFixed(1)}%</text>`);
+        }
+      }
+
+      // Budget CY bar
+      if (budVal != null) {
+        const y = yScale(budVal);
+        const h = (P.t + innerH) - y;
+        bars.push(`<rect x="${groupX + barW + barGap}" y="${y}" width="${barW}" height="${h}"
+                         fill="${COLORS.budgetCY}" fill-opacity="${refOpacity}" rx="2"/>`);
+      }
+
+      // Actual PY bar
+      if (pyVal != null) {
+        const y = yScale(pyVal);
+        const h = (P.t + innerH) - y;
+        bars.push(`<rect x="${groupX + 2 * (barW + barGap)}" y="${y}" width="${barW}" height="${h}"
+                         fill="${COLORS.actualPY}" fill-opacity="${refOpacity}" rx="2"/>`);
+      }
+
+      // Month label
+      labels.push(`<text x="${cx}" y="${H - 10}" text-anchor="middle"
+                         font-size="9" fill="#6b7280">${r.monthLabel}</text>`);
+    });
+
+    // Today divider — vertical dashed line at the right edge of the last completed month group
+    let dividerSvg = '';
+    if (lastCompletedIdx >= 0 && lastCompletedIdx < 11) {
+      const dx = P.l + (lastCompletedIdx + 1) * groupW;
+      dividerSvg = `
+        <line x1="${dx}" x2="${dx}" y1="${P.t}" y2="${P.t + innerH}"
+              stroke="#94a3b8" stroke-dasharray="4 4" stroke-width="1"/>
+        <text x="${dx + 4}" y="${P.t + 9}" font-size="8" fill="#64748b">today</text>
+      `;
+    }
+
+    return `
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        ${yTicks.join('')}
+        ${bars.join('')}
+        ${dividerSvg}
+        ${labels.join('')}
+        <line x1="${P.l}" x2="${W - P.r}" y1="${P.t + innerH}" y2="${P.t + innerH}" stroke="#e5e7eb"/>
+      </svg>
+    `;
+  };
+
+  const yearlyChartLegend = (year: number, priorYear: number): string => {
+    return `
+      <div style="display:flex;gap:14px;justify-content:center;margin-top:6px;font-size:9px;color:#374151">
+        <span><span style="display:inline-block;width:9px;height:9px;background:#1e40af;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Actual ${year}</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:#f59e0b;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Budget ${year}</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:#94a3b8;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Actual ${priorYear}</span>
+      </div>
+    `;
+  };
+
+  // Territory Analysis — grouped vertical bars per territory: actual / budget
+  // / stretch (budget × 1.1). Vs-budget % above each actual bar.
+  const territoryAnalysisSVG = (terrs: any[]): string => {
+    const W = 720, H = 240, P = { l: 48, r: 12, t: 24, b: 30 };
+    const innerW = W - P.l - P.r;
+    const innerH = H - P.t - P.b;
+
+    if (!terrs || terrs.length === 0) {
+      return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
+        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No data</text>
+      </svg>`;
+    }
+
+    // Filter, sort by actual desc, normalize names
+    const rows = (terrs || [])
+      .filter((t: any) => (Number(t.volume) || 0) > 0 || (Number(t.budgetVolume) || 0) > 0)
+      .sort((a: any, b: any) => (Number(b.volume) || 0) - (Number(a.volume) || 0))
+      .map((t: any) => ({
+        name:    String(t.territoryName || t.territoryCode || '?').replace(/'s Territory$/i, ''),
+        actual:  Number(t.volume) || 0,
+        budget:  Number(t.budgetVolume) || 0,
+        stretch: (Number(t.budgetVolume) || 0) * 1.1,
+        vsBud:   t.vsBudgetPct,
+      }));
+
+    if (rows.length === 0) {
+      return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
+        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No data</text>
+      </svg>`;
+    }
+
+    const allVals = rows.flatMap(r => [r.actual, r.budget, r.stretch]);
+    const yMax = Math.max(...allVals, 1) * 1.12;
+    const yScale = (v: number) => P.t + innerH - (v / yMax) * innerH;
+
+    const groupW = innerW / rows.length;
+    const barGap = 3;
+    const barW   = (groupW - 2 * barGap - 10) / 3;
+
+    // Y-axis ticks (5)
+    const yTicks: string[] = [];
+    for (let i = 0; i <= 4; i++) {
+      const v = yMax * (i / 4);
+      const y = yScale(v);
+      const label = v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M`
+                  : v >= 1_000     ? `${Math.round(v / 1_000)}K`
+                  : Math.round(v).toString();
+      yTicks.push(`
+        <line x1="${P.l}" x2="${W - P.r}" y1="${y}" y2="${y}"
+              stroke="#f1f5f9" stroke-dasharray="3 3"/>
+        <text x="${P.l - 6}" y="${y + 3}" text-anchor="end"
+              font-size="9" fill="#9ca3af">${label}</text>
+      `);
+    }
+
+    const COL = { actual: '#1e40af', budget: '#f59e0b', stretch: '#94a3b8' };
+    const bars: string[] = [];
+    const labels: string[] = [];
+
+    rows.forEach((r, i) => {
+      const groupX = P.l + i * groupW + 5;
+      const cx = groupX + (barW * 3 + barGap * 2) / 2;
+
+      // Actual
+      const ay = yScale(r.actual);
+      const ah = (P.t + innerH) - ay;
+      bars.push(`<rect x="${groupX}" y="${ay}" width="${barW}" height="${ah}"
+                       fill="${COL.actual}" rx="2"/>`);
+
+      // vs-budget % above actual
+      if (r.budget > 0 && r.vsBud != null) {
+        const pct = Number(r.vsBud) - 100; // delta from budget
+        const color = pct >= 0 ? '#16a34a' : '#dc2626';
+        const sign  = pct >= 0 ? '+' : '';
+        labels.push(`<text x="${groupX + barW / 2}" y="${ay - 4}" text-anchor="middle"
+                          font-size="9" font-weight="700" fill="${color}">${sign}${pct.toFixed(1)}%</text>`);
+      }
+
+      // Budget
+      if (r.budget > 0) {
+        const by = yScale(r.budget);
+        const bh = (P.t + innerH) - by;
+        bars.push(`<rect x="${groupX + barW + barGap}" y="${by}" width="${barW}" height="${bh}"
+                         fill="${COL.budget}" rx="2"/>`);
+      }
+      // Stretch
+      if (r.stretch > 0) {
+        const sy = yScale(r.stretch);
+        const sh = (P.t + innerH) - sy;
+        bars.push(`<rect x="${groupX + 2 * (barW + barGap)}" y="${sy}" width="${barW}" height="${sh}"
+                         fill="${COL.stretch}" rx="2"/>`);
+      }
+
+      // Territory name
+      labels.push(`<text x="${cx}" y="${H - 12}" text-anchor="middle"
+                         font-size="10" font-weight="600" fill="#374151">${esc(r.name)}</text>`);
+    });
+
+    return `
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
+        ${yTicks.join('')}
+        ${bars.join('')}
+        ${labels.join('')}
+        <line x1="${P.l}" x2="${W - P.r}" y1="${P.t + innerH}" y2="${P.t + innerH}" stroke="#e5e7eb"/>
+      </svg>
+    `;
+  };
+
+  const territoryAnalysisLegend = (): string => `
+    <div style="display:flex;gap:14px;justify-content:center;margin-top:6px;font-size:9px;color:#374151">
+      <span><span style="display:inline-block;width:9px;height:9px;background:#1e40af;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Actual</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:#f59e0b;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Budget</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:#94a3b8;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Stretch</span>
+    </div>
+  `;
+
   const territoryDonutSVG = (terrs: any[]): string => {
     const palette = ['#1e3a5f', '#0891b2', '#16a34a', '#d97706', '#6b7280', '#7c3aed'];
     const W = 300, H = 300, cx = W / 2, cy = H / 2, R = 120, r = 72;
@@ -324,9 +585,10 @@ function buildReportHTML(data: any): string {
     badgePct?: number | null;
     badgeText?: string;
     growth?: number | null;
+    growthLabel?: string;
     highlight?: boolean;
   }) => {
-    const { icon, label, value, sub, badgePct, badgeText, growth, highlight } = opts;
+    const { icon, label, value, sub, badgePct, badgeText, growth, growthLabel, highlight } = opts;
     const badge =
       badgeText
         ? `<span class="kpi-badge ${badgeClass(badgePct)}">${esc(badgeText)}</span>`
@@ -334,7 +596,7 @@ function buildReportHTML(data: any): string {
           ? `<span class="kpi-badge ${badgeClass(badgePct)}">${fmtVar(badgePct)}</span>`
           : '';
     const growthLine = growth != null
-      ? `<p class="kpi-growth ${growthClass(growth)}">${growthArrow(growth)} ${Math.abs(growth).toFixed(1)}% vs prior</p>`
+      ? `<p class="kpi-growth ${growthClass(growth)}">${growthArrow(growth)} ${Math.abs(growth).toFixed(1)}% ${growthLabel || 'vs prior'}</p>`
       : '';
     return `
       <div class="kpi ${highlight ? 'highlight' : ''}">
@@ -372,9 +634,15 @@ function buildReportHTML(data: any): string {
            font-weight: 600; letter-spacing: 0.4px; }
 
   /* ── Section title ──────────────────────────────────────────── */
-  .stitle { font-size: 10px; font-weight: 700; color: #6b7280;
-            text-transform: uppercase; letter-spacing: 1.2px;
-            margin: 22px 0 10px; }
+  .stitle { font-size: 10px; font-weight: 700; color: #1e3a5f;
+            text-transform: uppercase; letter-spacing: 1.1px;
+            margin: 18px 0 8px;
+            display: flex; align-items: center; gap: 8px; }
+  .stitle::before { content: ''; display: inline-block;
+                    width: 3px; height: 11px; background: #1e3a5f;
+                    border-radius: 2px; }
+  .stitle small { font-weight: 500; color: #94a3b8; letter-spacing: 0.4px;
+                  text-transform: none; font-size: 9px; }
 
   /* ── KPI tiles (match dashboard KPICards.tsx exactly) ────────── */
   .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
@@ -409,20 +677,32 @@ function buildReportHTML(data: any): string {
   .g-green { color: #16a34a; }
   .g-red   { color: #dc2626; }
 
-  /* ── Tables ────────────────────────────────────────────────── */
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #f3f4f6; color: #6b7280; font-size: 9px;
-       text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600;
-       text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+  /* ── Tables (one consistent style across all pages) ──────────── */
+  /* Card wrapper around every data table — gives the rounded outline,
+     keeps the headers clean, and makes the report read uniformly. */
+  .tcard { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+           overflow: hidden; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; table-layout: auto; }
+  thead tr { background: #f8fafc; }
+  th { color: #475569; font-size: 9px;
+       text-transform: uppercase; letter-spacing: 0.45px; font-weight: 700;
+       text-align: left; padding: 9px 10px;
+       border-bottom: 1.5px solid #e5e7eb;
+       white-space: nowrap; }
   th.num { text-align: right; }
-  td { font-size: 10px; padding: 7px 10px; border-bottom: 1px solid #f3f4f6;
-       color: #111827; }
+  td { font-size: 10px; padding: 7px 10px;
+       border-bottom: 1px solid #f1f5f9;
+       color: #111827; vertical-align: middle; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.muted { color: #9ca3af; }
-  tr:last-child td { border-bottom: none; }
-  .rnk { display: inline-block; width: 16px; height: 16px; border-radius: 50%;
-         background: #e5e7eb; color: #374151; font-size: 9px; font-weight: 700;
-         text-align: center; line-height: 16px; }
+  /* Zebra striping — odd body rows get a soft tint for scannability */
+  tbody tr:nth-child(even) { background: #fafbfc; }
+  tbody tr:last-child td { border-bottom: none; }
+  /* First column always emphasized (site / territory name) */
+  td:first-child { font-weight: 600; color: #0f172a; }
+  .rnk { display: inline-block; width: 17px; height: 17px; border-radius: 50%;
+         background: #1e3a5f; color: #ffffff; font-size: 9px; font-weight: 700;
+         text-align: center; line-height: 17px; }
 
   /* ── Comments ──────────────────────────────────────────────── */
   .cmt { border-left: 3px solid #1e3a5f; padding: 6px 10px; margin-bottom: 6px;
@@ -440,30 +720,41 @@ function buildReportHTML(data: any): string {
   .page { page-break-after: always; }
   .page:last-child { page-break-after: auto; }
   .pghdr { display: flex; justify-content: space-between; align-items: baseline;
-           margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
-  .pghdr h2 { font-size: 14px; font-weight: 700; color: #1e3a5f; }
-  .pghdr span { font-size: 9px; color: #9ca3af; }
+           margin-bottom: 14px; padding-bottom: 8px;
+           border-bottom: 2px solid #1e3a5f; }
+  .pghdr h2 { font-size: 15px; font-weight: 700; color: #1e3a5f;
+              letter-spacing: -0.2px; }
+  .pghdr span { font-size: 9px; color: #6b7280;
+                font-variant-numeric: tabular-nums; }
+  .pghdr span strong { color: #111827; font-weight: 600; }
 
   /* ── Long-table pagination (Full Site Breakdown) ─────────── */
   table.paged       { table-layout: auto; }
   table.paged thead { display: table-header-group; }
   table.paged tfoot { display: table-row-group; }
   table.paged tr    { page-break-inside: avoid; }
-  table.compact th, table.compact td { padding: 5px 6px; font-size: 9px; }
+  /* Compact variant — only used on the long Full Site Breakdown table.
+     Keeps the same typography hierarchy but with slightly tighter padding. */
+  table.compact th { padding: 7px 8px; font-size: 9px; }
+  table.compact td { padding: 6px 8px; font-size: 9.5px; }
 
   /* ── Charts row ────────────────────────────────────────────── */
-  .charts-row { display: grid; grid-template-columns: 2fr 1fr;
+  .charts-row { display: grid; grid-template-columns: 2.4fr 1fr;
                 gap: 10px; margin-top: 10px; }
   .chart-card { background: #fff; border: 1px solid #e5e7eb;
                 border-radius: 10px; padding: 10px 14px;
                 display: flex; flex-direction: column; }
-  .chart-card.daily { height: 240px; }
-  .chart-card.donut { height: 240px; align-items: center; }
+  .chart-card.daily { height: 290px; }
+  .chart-card.donut { height: 290px; align-items: center; }
   .chart-title { font-size: 11px; font-weight: 700; color: #111827;
                  margin-bottom: 6px; align-self: flex-start; }
   .chart-card svg { display: block; flex: 1 1 auto; min-height: 0;
                     width: 100%; height: 100%; }
-  .chart-card.donut svg { max-width: 200px; max-height: 200px; }
+  .chart-card.donut svg { max-width: 220px; max-height: 220px; }
+  /* Yearly chart on page 2 — sized to share the page with the daily trend */
+  .chart-card.yearly { height: 300px; }
+  /* Daily chart variant on page 2 — slightly more compact than the page-1 size */
+  .chart-card.daily.compact { height: 220px; }
 </style>
 </head>
 <body>
@@ -487,7 +778,14 @@ function buildReportHTML(data: any): string {
   <div class="stitle">Key Performance Indicators</div>
   <div class="kpis">
 
-    ${tile({
+    ${/* 1. Active Sites */ tile({
+      icon:  'store',
+      label: 'Active Sites',
+      value: String(kpis.mtd?.activeSites ?? '—'),
+      sub:   `${kpis.mtd?.tradingDays ?? 0} days reporting`,
+    })}
+
+    ${/* 2. MTD Volume */ tile({
       icon:  'barrel',
       label: 'MTD Volume',
       value: `${fmtVol(kpis.mtd?.volume)} L`,
@@ -496,98 +794,138 @@ function buildReportHTML(data: any): string {
       highlight: true,
     })}
 
-    ${tile({
-      icon:  'chart',
-      label: 'YTD Volume',
-      value: `${fmtVol(kpis.ytd?.volume)} L`,
-      sub:   `YTD vs pro-rata budget: ${fmtVar(kpis.ytd?.vsBudgetPct)}`,
-      badgePct: kpis.ytd?.vsBudgetPct,
-      growth:   kpis.growth?.ytdGrowthPct ?? null,
-    })}
-
-    ${tile({
-      icon:  'target',
-      label: 'Vs Stretch',
-      value: fmtVar(kpis.budget?.vsStretchPct),
-      sub:   'vs pro-rated stretch target',
-      badgePct: kpis.budget?.vsStretchPct,
-      badgeText: (kpis.budget?.vsStretchPct ?? 0) >= 100 ? 'ACHIEVED' : undefined,
-    })}
-
-    ${tile({
-      icon:  'trending',
-      label: 'MTD Growth',
-      value: kpis.growth?.mtdGrowthPct != null
-              ? `${kpis.growth.mtdGrowthPct >= 0 ? '+' : ''}${kpis.growth.mtdGrowthPct.toFixed(1)}%`
-              : '—',
-      sub:   `Prior: ${fmtVol(kpis.growth?.priorMtdVolume)} L`,
-      growth: kpis.growth?.mtdGrowthPct ?? null,
-    })}
-
-    ${tile({
+    ${/* 3. Average Daily Sales */ tile({
       icon:  'lightning',
-      label: 'Avg Daily',
+      label: 'Avg Daily Sales',
       value: `${fmtVol(kpis.mtd?.avgDaily)} L`,
       sub:   `${kpis.mtd?.tradingDays ?? 0} days · ${kpis.mtd?.activeSites ?? 0} sites`,
     })}
 
-    ${tile({
-      icon:  'dollar',
-      label: 'MTD Revenue',
-      value: fmtRev(kpis.mtd?.revenue),
-      sub:   'Total invoiced revenue',
+    ${/* 4. Vs Stretch + Vs Budget (dual stat) */ (() => {
+      const vsS = kpis.budget?.vsStretchPct;
+      const vsB = kpis.budget?.vsBudgetPct;
+      const colorOf = (pct: number | null | undefined) =>
+        pct == null ? '#9ca3af' : pct >= 100 ? '#16a34a' : pct >= 85 ? '#d97706' : '#dc2626';
+      const badge = (vsS ?? 0) >= 100 ? 'STRETCH ACHIEVED' : (vsB ?? 0) >= 100 ? 'BUDGET MET' : undefined;
+      const dual = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px">
+          <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:6px;padding:10px 10px">
+            <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#6b7280;margin-bottom:5px">Vs Stretch</p>
+            <p style="font-size:20px;font-weight:700;color:${colorOf(vsS)};line-height:1.1;font-variant-numeric:tabular-nums">${fmtVar(vsS)}</p>
+          </div>
+          <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:6px;padding:10px 10px">
+            <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#6b7280;margin-bottom:5px">Vs Budget</p>
+            <p style="font-size:20px;font-weight:700;color:${colorOf(vsB)};line-height:1.1;font-variant-numeric:tabular-nums">${fmtVar(vsB)}</p>
+          </div>
+        </div>
+      `;
+      return tile({
+        icon:  'target',
+        label: 'MTD Targets',
+        value: dual,
+        badgePct: vsS,
+        badgeText: badge,
+      });
+    })()}
+
+    ${/* 5. MoM Growth */ (() => {
+      const cy  = kpis.mtd?.activeSites;
+      const py  = kpis.growth?.priorMtdActiveSites;
+      const d   = (cy != null && py != null) ? cy - py : null;
+      const priorTxt = `${fmtVol(kpis.growth?.priorMtdVolume)} L last month`;
+      const deltaColor = d == null || d === 0 ? '#6b7280' : d > 0 ? '#16a34a' : '#dc2626';
+      const deltaSign  = d == null || d === 0 ? '±' : d > 0 ? '+' : '−';
+      const deltaHtml  = d != null
+        ? `<span style="color:${deltaColor};font-weight:600">${deltaSign}${Math.abs(d)} site${Math.abs(d) === 1 ? '' : 's'}</span>`
+        : '';
+      const sub = d != null ? `${deltaHtml} · ${priorTxt}` : priorTxt;
+      return tile({
+        icon:  'trending',
+        label: 'MoM Growth',
+        value: kpis.growth?.mtdGrowthPct != null
+                ? `${kpis.growth.mtdGrowthPct >= 0 ? '+' : ''}${kpis.growth.mtdGrowthPct.toFixed(1)}%`
+                : '—',
+        sub,
+        growth: kpis.growth?.mtdGrowthPct ?? null,
+        growthLabel: 'vs prior month',
+      });
+    })()}
+
+    ${/* 6. Avg Margin */ tile({
+      icon:  'calendar',
+      label: 'Avg Margin',
+      value: kpis.margin?.avgCplPerSite != null
+              ? `$${(kpis.margin.avgCplPerSite / 100).toFixed(2)}/L`
+              : '—',
+      sub:   kpis.margin?.sitesWithMargin
+              ? `${kpis.margin.sitesWithMargin} of ${kpis.mtd?.activeSites ?? '?'} active sites have margin data`
+              : 'Net gross margin',
     })}
 
-    ${tile({
+    ${/* 7. Cash Ratio */ tile({
+      icon:  'cash',
+      label: 'Cash Ratio',
+      value: kpis.mtd?.cashRatio != null
+              ? `${(kpis.mtd.cashRatio * 100).toFixed(1)}%`
+              : '—',
+      sub:   `Coupon: ${fmtVol(kpis.mtd?.couponVolume)} L · Card: ${fmtVol(kpis.mtd?.cardVolume)} L`,
+    })}
+
+    ${/* 8. Petrotrade */ tile({
       icon:  'handshake',
       label: 'Petrotrade Vol',
       value: `${fmtVol(kpis.petrotrade?.mtdVolume)} L`,
       sub:   `Margin: ${fmtRev(kpis.petrotrade?.mtdMargin)}`,
     })}
 
-    ${tile({
-      icon:  'cash',
-      label: 'Cash Ratio',
-      value: kpis.mtd?.cashRatio != null
-              ? `${(kpis.mtd.cashRatio * 100).toFixed(1)}%`
-              : '—',
-      sub:   'Cash / total revenue',
-    })}
+    ${/* 9. Redan Flexi Volume */ (() => {
+      const cy = kpis.mtd?.flexVolume;
+      const py = kpis.growth?.priorMtdFlexVolume;
+      const flexGrowth = (cy != null && py != null && py > 0)
+        ? ((cy - py) / py) * 100
+        : null;
+      return tile({
+        icon:  'dollar',
+        label: 'Redan Flexi Volume',
+        value: `${fmtVol(cy)} L`,
+        sub:   py != null ? `${fmtVol(py)} L last month` : 'Flexi blend + flexi diesel',
+        growth: flexGrowth,
+        growthLabel: 'vs prior month',
+      });
+    })()}
 
-    ${tile({
-      icon:  'store',
-      label: 'Active Sites',
-      value: String(kpis.mtd?.activeSites ?? '—'),
-      sub:   `${kpis.mtd?.tradingDays ?? 0} days reporting`,
-    })}
-
-    ${tile({
-      icon:  'calendar',
-      label: 'Avg Margin / Site',
-      value: kpis.margin?.avgCplPerSite != null
-              ? `${kpis.margin.avgCplPerSite.toFixed(1)} ¢/L`
-              : '—',
-      sub:   kpis.margin?.sitesWithMargin
-              ? `${kpis.margin.sitesWithMargin} sites · net gross margin`
-              : 'Net gross margin',
-    })}
+    ${/* 10. YTD Volume */ (() => {
+      const cy  = kpis.ytd?.activeSites;
+      const py  = kpis.growth?.priorYtdActiveSites;
+      const d   = (cy != null && py != null) ? cy - py : null;
+      const priorTxt = `${fmtVol(kpis.growth?.priorYtdVolume)} L last year`;
+      const deltaColor = d == null || d === 0 ? '#6b7280' : d > 0 ? '#16a34a' : '#dc2626';
+      const deltaSign  = d == null || d === 0 ? '±' : d > 0 ? '+' : '−';
+      const deltaHtml  = d != null
+        ? `<span style="color:${deltaColor};font-weight:600">${deltaSign}${Math.abs(d)} site${Math.abs(d) === 1 ? '' : 's'}</span>`
+        : '';
+      const sub = d != null ? `${deltaHtml} · ${priorTxt}` : priorTxt;
+      return tile({
+        icon:  'chart',
+        label: 'YTD Volume',
+        value: `${fmtVol(kpis.ytd?.volume)} L`,
+        sub,
+        badgePct: kpis.ytd?.vsBudgetPct,
+        growth:   kpis.growth?.ytdGrowthPct ?? null,
+        growthLabel: 'vs prior year',
+      });
+    })()}
 
   </div>
 
-  <!-- Charts row: daily trend + territory donut -->
+  <!-- Charts row: territory analysis + territory donut -->
   <div class="charts-row">
     <div class="chart-card daily">
-      <div class="chart-title">Daily Volume Trend
-        <span style="font-size:9px;color:#9ca3af;font-weight:400">
-          · ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(data.trendMonth?.month || 1) - 1]} ${data.trendMonth?.year || ''}
-          ${(() => {
-            const stats = dailyChartStats(data.trend || [], data.trendMonth || { monthEndDay: 30 });
-            return stats ? ` · ${stats}` : '';
-          })()}
-        </span>
+      <div class="chart-title">Territory Analysis
+        <span style="font-size:9px;color:#9ca3af;font-weight:400">· Actual vs Budget vs Stretch</span>
       </div>
-      ${dailyChartSVG(data.trend || [], data.trendMonth || { year: new Date().getFullYear(), month: new Date().getMonth()+1, monthEndDay: 30 })}
-      ${dailyChartLegend(data.trend || [], data.trendMonth || { monthEndDay: 30 })}
+      ${territoryAnalysisSVG(territories || [])}
+      ${territoryAnalysisLegend()}
     </div>
     <div class="chart-card donut">
       <div class="chart-title">Territory Distribution</div>
@@ -597,11 +935,71 @@ function buildReportHTML(data: any): string {
 
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
-    <span>Page 1 of 3 · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+    <span>Page 1 of 4 · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
   </div>
 </div>
 
-<!-- ─────────────────────── PAGE 2 — Territory + Top 10 ─────────────────────── -->
+<!-- ─────────────── PAGE 2 — Yearly Volume Chart + Site Activity ─────────────── -->
+<div class="page">
+
+  <div class="pghdr">
+    <h2>${data.yearly?.year ?? ''} Volume Outlook</h2>
+    <span>Independent of report date filter · respects territory filter</span>
+  </div>
+
+  <div class="stitle">Daily Volume Trend
+    <small>${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(data.trendMonth?.month || 1) - 1]} ${data.trendMonth?.year || ''}${(() => {
+      const stats = dailyChartStats(data.trend || [], data.trendMonth || { monthEndDay: 30 });
+      return stats ? ` · ${stats}` : '';
+    })()}</small></div>
+  <div class="chart-card daily compact" style="margin-bottom:10px">
+    ${dailyChartSVG(data.trend || [], data.trendMonth || { year: new Date().getFullYear(), month: new Date().getMonth()+1, monthEndDay: 30 })}
+    ${dailyChartLegend(data.trend || [], data.trendMonth || { monthEndDay: 30 })}
+  </div>
+
+  <div class="stitle">${data.yearly?.year ?? ''} Volume — Actual vs Budget vs ${data.yearly?.priorYear ?? ''}</div>
+  <div class="chart-card yearly">
+    <div style="font-size:9px;color:#9ca3af;margin-bottom:4px">
+      Future months show budget &amp; prior‑year as reference (lighter fill). % above each bar = actual vs budget for that month.
+    </div>
+    ${yearlyVolumeBudgetSVG(data.yearly?.data || [], data.yearly?.year || 0, data.yearly?.priorYear || 0)}
+    ${yearlyChartLegend(data.yearly?.year || 0, data.yearly?.priorYear || 0)}
+  </div>
+
+  ${data.unmatched?.counts?.all > 0 ? `
+  <div class="stitle" style="margin-top:18px">⚠ Unmatched Submissions</div>
+  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px">
+    <div style="font-size:11px;color:#991b1b;font-weight:600;margin-bottom:6px">
+      ${data.unmatched.counts.distinctCodes} site code(s) · ${data.unmatched.counts.all} row(s) dropped because the SITE CODE wasn't in NAME INDEX.
+    </div>
+    <table style="width:100%;font-size:9px">
+      <thead><tr>
+        <th style="text-align:left;padding:4px 6px;color:#7f1d1d">Raw Code</th>
+        <th style="text-align:left;padding:4px 6px;color:#7f1d1d">Sheet</th>
+        <th style="text-align:right;padding:4px 6px;color:#7f1d1d">Rows</th>
+        <th style="text-align:left;padding:4px 6px;color:#7f1d1d">Last Seen</th>
+      </tr></thead>
+      <tbody>
+        ${(data.unmatched.data || []).slice(0, 8).map((u: any) => `
+          <tr>
+            <td style="padding:3px 6px;font-family:monospace;color:#dc2626;font-weight:600">${esc(u.rawSiteCode)}</td>
+            <td style="padding:3px 6px;color:#6b7280">${esc(u.sheet)}</td>
+            <td style="padding:3px 6px;text-align:right;color:#374151">${u.rowCount}</td>
+            <td style="padding:3px 6px;color:#9ca3af">${u.lastDate ? new Date(u.lastDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+  ` : ''}
+
+  <div class="ftr">
+    <span>Redan Sales Dashboard · Confidential</span>
+    <span>Page 2 of 4</span>
+  </div>
+</div>
+
+<!-- ─────────────────────── PAGE 3 — Territory + Top 10 ─────────────────────── -->
 <div class="page">
 
   <div class="pghdr">
@@ -609,8 +1007,8 @@ function buildReportHTML(data: any): string {
     <span>${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
   </div>
 
-  <div class="stitle">Territory Performance · Aggregated by Territory Manager</div>
-  <table>
+  <div class="stitle">Territory Performance <small>aggregated by Territory Manager</small></div>
+  <div class="tcard"><table>
     <thead><tr>
       <th>Territory</th>
       <th class="num">Sites</th>
@@ -644,10 +1042,10 @@ function buildReportHTML(data: any): string {
           <td class="num muted">${fmtVol(t.ulpVol)}</td>
         </tr>`).join('')}
     </tbody>
-  </table>
+  </table></div>
 
-  <div class="stitle" style="margin-top: 18px">Top 10 Sites · by Volume</div>
-  <table>
+  <div class="stitle">Top 10 Sites <small>by volume</small></div>
+  <div class="tcard"><table>
     <thead><tr>
       <th style="width:24px">#</th>
       <th>Site</th>
@@ -675,7 +1073,7 @@ function buildReportHTML(data: any): string {
           <td class="num muted">${s.contributionPct != null ? s.contributionPct.toFixed(1) + '%' : '—'}</td>
         </tr>`).join('')}
     </tbody>
-  </table>
+  </table></div>
 
   ${comments && comments.length > 0 ? `
     <div class="stitle" style="margin-top: 18px">Analyst Notes</div>
@@ -689,11 +1087,11 @@ function buildReportHTML(data: any): string {
 
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
-    <span>Page 2 of 3</span>
+    <span>Page 3 of 4</span>
   </div>
 </div>
 
-<!-- ─────────────────────── PAGE 3 — Full Site Breakdown ─────────────────────── -->
+<!-- ─────────────────────── PAGE 4 — Full Site Breakdown ─────────────────────── -->
 <div class="page">
 
   <div class="pghdr">
@@ -701,18 +1099,19 @@ function buildReportHTML(data: any): string {
     <span>${(breakdown || []).length} sites · ${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
   </div>
 
-  <table class="paged compact">
+  <div class="tcard"><table class="paged compact">
     <thead><tr>
       <th>Site</th>
       <th>Territory</th>
       <th>MOSO</th>
       <th class="num">Volume (L)</th>
-      <th class="num">Revenue</th>
       <th class="num">Avg / Day</th>
+      <th class="num">Budget (L)</th>
+      <th class="num">Vs Budget</th>
+      <th class="num">Vs Stretch</th>
       <th class="num">Cum. Loss (L)</th>
       <th class="num">Cash %</th>
-      <th class="num">Coupon (L)</th>
-      <th class="num">Card (L)</th>
+      <th class="num">Coupon + Card (L)</th>
       <th class="num">Flex (L)</th>
       <th class="num">Net Margin</th>
     </tr></thead>
@@ -732,28 +1131,33 @@ function buildReportHTML(data: any): string {
         const netMargin = parseFloat(r.net_margin || 0);
         const invVol    = parseFloat(r.inv_volume || 0);
         const cpl       = invVol > 0 ? (netMargin / invVol) * 100 : null;
+        const budgetVol  = parseFloat(r.budget_volume || 0);
+        const stretchVol = budgetVol * 1.1;
+        const vsBudPct   = budgetVol  > 0 ? (vol / budgetVol)  * 100 : null;
+        const vsStrPct   = stretchVol > 0 ? (vol / stretchVol) * 100 : null;
         return `
         <tr>
           <td><strong>${esc(r.site_name || r.site_code)}</strong></td>
           <td class="muted">${esc(r.territory_name) || '—'}</td>
           <td class="muted">${esc(r.moso) || '—'}</td>
           <td class="num">${fmtVol(vol)}</td>
-          <td class="num muted">${fmtRev(rev)}</td>
           <td class="num muted">${fmtVol(avg)}</td>
+          <td class="num muted">${budgetVol > 0 ? fmtVol(budgetVol) : '—'}</td>
+          <td class="num" style="color:${varColor(vsBudPct)};font-weight:600">${fmtVar(vsBudPct)}</td>
+          <td class="num" style="color:${varColor(vsStrPct)};font-weight:600">${fmtVar(vsStrPct)}</td>
           <td class="num" style="color:${lossColor}">${fmtVol(loss)}</td>
           <td class="num muted">${cashPct != null ? cashPct.toFixed(1) + '%' : '—'}</td>
-          <td class="num muted">${couponVol > 0 ? fmtVol(couponVol) : '—'}</td>
-          <td class="num muted">${cardVol   > 0 ? fmtVol(cardVol)   : '—'}</td>
+          <td class="num muted">${(couponVol + cardVol) > 0 ? fmtVol(couponVol + cardVol) : '—'}</td>
           <td class="num muted">${flexVol   > 0 ? fmtVol(flexVol)   : '—'}</td>
-          <td class="num">${cpl != null ? `${cpl.toFixed(1)} ¢/L` : '—'}</td>
+          <td class="num">${cpl != null ? `$${(cpl / 100).toFixed(2)}/L` : '—'}</td>
         </tr>`;
       }).join('')}
     </tbody>
-  </table>
+  </table></div>
 
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
-    <span>Page 3 of 3</span>
+    <span>Page 4 of 4</span>
   </div>
 </div>
 
@@ -816,11 +1220,18 @@ export async function POST(req: NextRequest) {
       ...(territory && { territory }), ...(product && { product }),
     });
 
-    const [kpisRes, topSitesRes, territoriesRes, trendRes] = await Promise.all([
+    // Yearly chart only honors non-date filters (territory) — its scope is
+    // always the full year that contains the latest sale_date.
+    const yearlyParams = new URLSearchParams({ ...(territory && { territory }) });
+
+    // Unmatched submissions panel — global state, no filters.
+    const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
       fetch(`${baseUrl}/api/kpis?${params}`,             fwd).then(r => r.json()),
       fetch(`${baseUrl}/api/top-sites?${params}&limit=10`, fwd).then(r => r.json()),
       fetch(`${baseUrl}/api/territory-performance?${params}`, fwd).then(r => r.json()),
       fetch(`${baseUrl}/api/sales-trend?${trendParams}`, fwd).then(r => r.json()),
+      fetch(`${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd).then(r => r.json()).catch(() => null),
+      fetch(`${baseUrl}/api/unmatched-rows?pageSize=10`,  fwd).then(r => r.json()).catch(() => null),
     ]);
 
     if (kpisRes?.error || topSitesRes?.error || territoriesRes?.error) {
@@ -854,8 +1265,8 @@ export async function POST(req: NextRequest) {
     );
 
     // ── Margin total for the period ────────────────────────────────────────
-    // margin_data is keyed by (site_code, period_month). Sum the months that
-    // intersect [dateFrom..dateTo].
+    // site_margins holds $/L per (site, month). Multiply by actual monthly
+    // sales volume to get net margin $.
     const marginParams: any[] = [dateFrom, dateTo];
     let marginTerritoryClause = '';
     if (territory) {
@@ -863,15 +1274,25 @@ export async function POST(req: NextRequest) {
       marginTerritoryClause = `AND t.tm_code = $${marginParams.length}`;
     }
     const marginRow = await queryOne<any>(`
+      WITH monthly_sales AS (
+        SELECT s.site_code,
+               DATE_TRUNC('month', s.sale_date)::DATE AS m,
+               SUM(s.total_volume) AS volume
+        FROM sales s
+        WHERE s.sale_date >= $1 AND s.sale_date <= $2
+        GROUP BY s.site_code, DATE_TRUNC('month', s.sale_date)
+      )
       SELECT
-        COALESCE(SUM(m.gross_margin),     0) AS gross_margin,
-        COALESCE(SUM(m.net_gross_margin), 0) AS net_margin,
-        COALESCE(SUM(m.inv_volume),       0) AS inv_volume
-      FROM margin_data m
-      JOIN sites si ON m.site_code = si.site_code
+        COALESCE(SUM(sm.margin_per_litre * COALESCE(ms.volume, 0)), 0) AS gross_margin,
+        COALESCE(SUM(sm.margin_per_litre * COALESCE(ms.volume, 0)), 0) AS net_margin,
+        COALESCE(SUM(COALESCE(ms.volume, 0)), 0)                       AS inv_volume
+      FROM site_margins sm
+      JOIN sites si ON sm.site_code = si.site_code
       LEFT JOIN territories t ON si.territory_id = t.id
-      WHERE m.period_month >= DATE_TRUNC('month', $1::DATE)
-        AND m.period_month <= DATE_TRUNC('month', $2::DATE)
+      LEFT JOIN monthly_sales ms
+        ON ms.site_code = sm.site_code AND ms.m = sm.period_month
+      WHERE sm.period_month >= DATE_TRUNC('month', $1::DATE)
+        AND sm.period_month <= DATE_TRUNC('month', $2::DATE)
       ${marginTerritoryClause}
     `, marginParams);
 
@@ -912,19 +1333,43 @@ export async function POST(req: NextRequest) {
           COALESCE(s.flex_blend_volume,  0)
         ), 0) AS flex_volume,
         (
-          SELECT COALESCE(SUM(m2.net_gross_margin), 0)
-          FROM margin_data m2
-          WHERE m2.site_code = si.site_code
-            AND m2.period_month >= DATE_TRUNC('month', $1::DATE)
-            AND m2.period_month <= DATE_TRUNC('month', $2::DATE)
+          SELECT COALESCE(SUM(
+            sm2.margin_per_litre * COALESCE((
+              SELECT SUM(s2.total_volume)
+              FROM sales s2
+              WHERE s2.site_code = si.site_code
+                AND DATE_TRUNC('month', s2.sale_date) = sm2.period_month
+                AND s2.sale_date BETWEEN $1 AND $2
+            ), 0)
+          ), 0)
+          FROM site_margins sm2
+          WHERE sm2.site_code = si.site_code
+            AND sm2.period_month >= DATE_TRUNC('month', $1::DATE)
+            AND sm2.period_month <= DATE_TRUNC('month', $2::DATE)
         ) AS net_margin,
         (
-          SELECT COALESCE(SUM(m3.inv_volume), 0)
-          FROM margin_data m3
-          WHERE m3.site_code = si.site_code
-            AND m3.period_month >= DATE_TRUNC('month', $1::DATE)
-            AND m3.period_month <= DATE_TRUNC('month', $2::DATE)
-        ) AS inv_volume
+          SELECT COALESCE(SUM(s3.total_volume), 0)
+          FROM sales s3
+          WHERE s3.site_code = si.site_code
+            AND s3.sale_date BETWEEN $1 AND $2
+        ) AS inv_volume,
+        -- Pro-rated budget for the [dateFrom..dateTo] window. For each
+        -- (site, month) overlapping the range, take overlap_days/calendar_days
+        -- × monthly_budget. Stretch is locked at budget × 1.1.
+        (
+          SELECT COALESCE(SUM(
+            vb.budget_volume / bc.calendar_days::NUMERIC *
+            GREATEST(0,
+              (LEAST((bc.period_month + INTERVAL '1 month' - INTERVAL '1 day')::DATE, $2::DATE)
+               - GREATEST(bc.period_month, $1::DATE) + 1)::INTEGER
+            )
+          ), 0)
+          FROM volume_budget vb
+          JOIN budget_calendar bc ON vb.budget_month = bc.period_month
+          WHERE vb.site_code = si.site_code
+            AND bc.period_month <= $2::DATE
+            AND (bc.period_month + INTERVAL '1 month')::DATE > $1::DATE
+        ) AS budget_volume
       FROM sites si
       LEFT JOIN territories t ON si.territory_id = t.id
       LEFT JOIN sales s
@@ -948,6 +1393,8 @@ export async function POST(req: NextRequest) {
       margin:    marginRow,
       breakdown: breakdownRows,
       comments:  commentsRows,
+      yearly:    yearlyRes && !yearlyRes.error    ? yearlyRes    : null,
+      unmatched: unmatchedRes && !unmatchedRes.error ? unmatchedRes : null,
     });
 
     // Use Puppeteer to generate PDF (available via @sparticuz/chromium in serverless)

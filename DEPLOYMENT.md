@@ -235,7 +235,7 @@ Neon PostgreSQL
     ├── territories (4 TMs)
     ├── sales (50K+ rows — status report truth)
     ├── petrotrade_sales (partner volumes)
-    ├── margin_data (Dynamics/invoiced)
+    ├── site_margins (monthly $/L per site)
     ├── volume_budget (monthly targets + stretch)
     ├── reconciliation_log (control gap)
     └── Materialized Views (pre-computed KPIs)
