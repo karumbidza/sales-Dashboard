@@ -40,7 +40,7 @@ export async function query<T = any>(
   const run = async () => {
     const client = await getPool().connect();
     try {
-      const result: QueryResult<T> = await client.query(sql, params);
+      const result = await client.query(sql, params);
       return result.rows;
     } finally {
       client.release();

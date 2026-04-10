@@ -1474,47 +1474,8 @@ export async function POST(req: NextRequest) {
       unmatched: unmatchedRes && !unmatchedRes.error ? unmatchedRes : null,
     });
 
-    // Use Puppeteer to generate PDF (available via @sparticuz/chromium in serverless)
-    let pdfBuffer: Buffer;
-    try {
-      const puppeteer = await import('puppeteer-core');
-      const chromium  = await import('@sparticuz/chromium');
-      const browser = await puppeteer.default.launch({
-        args: chromium.default.args,
-        defaultViewport: chromium.default.defaultViewport,
-        executablePath: await chromium.default.executablePath(),
-        headless: true,
-      });
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdfRaw = await page.pdf({
-        format: 'A4',
-        landscape: true,
-        printBackground: true,
-        preferCSSPageSize: true,
-        margin: { top: '0', right: '0', bottom: '0', left: '0' },
-      });
-      await browser.close();
-      pdfBuffer = Buffer.from(pdfRaw);
-    } catch (puppeteerErr) {
-      // Fallback: return HTML for client-side printing
-      console.warn('Puppeteer unavailable, returning HTML:', puppeteerErr);
-      return NextResponse.json({
-        reportId,
-        html,
-        fallback: true,
-        message: 'PDF engine unavailable — use browser print (Ctrl+P) on the HTML',
-      });
-    }
-
-    // Return PDF
-    return new NextResponse(new Uint8Array(pdfBuffer), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="fuel-report-${dateFrom}-${dateTo}.pdf"`,
-        'X-Report-Id': reportId,
-      },
-    });
+    // Return HTML for client-side PDF printing (no Puppeteer dependency)
+    return NextResponse.json({ reportId, html });
 
   } catch (err: any) {
     console.error('/api/report error:', err);

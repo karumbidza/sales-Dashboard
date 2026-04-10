@@ -62,27 +62,18 @@ export default function ReportGenerator({ filters }: Props) {
         }),
       });
 
-      // Check if it's a PDF binary or JSON
-      const contentType = res.headers.get('Content-Type') || '';
-      if (contentType.includes('application/pdf')) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `fuel-report-${filters.dateFrom}.pdf`;
-        a.click();
-        const rId = res.headers.get('X-Report-Id');
-        if (rId) setReportId(rId);
-      } else {
-        // HTML fallback
-        const data = await res.json();
-        if (data.html) {
-          const w = window.open('', '_blank');
-          w?.document.write(data.html);
-          w?.document.close();
+      const data = await res.json();
+      if (data.html) {
+        // Open report in new window and auto-trigger browser print → Save as PDF
+        const w = window.open('', '_blank');
+        if (w) {
+          w.document.write(data.html);
+          w.document.close();
+          // Give the browser a moment to render before triggering print
+          setTimeout(() => w.print(), 600);
         }
-        if (data.reportId) setReportId(data.reportId);
       }
+      if (data.reportId) setReportId(data.reportId);
 
       // Refresh report list
       fetch('/api/report').then(r => r.json()).then(d => setPastReports(d.data || []));

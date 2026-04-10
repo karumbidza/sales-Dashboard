@@ -26,13 +26,6 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-  typescript: {
-    // Puppeteer Buffer type mismatch is harmless — runtime fallback handles it
-    ignoreBuildErrors: true,
-  },
-  experimental: {
-    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
-  },
   async headers() {
     return [
       {
