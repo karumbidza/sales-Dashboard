@@ -1279,7 +1279,8 @@ export async function POST(req: NextRequest) {
 
     // Fetch all data for the report. Forward the inbound cookie so the
     // internal API calls survive middleware auth.
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     const params = new URLSearchParams({ dateFrom, dateTo, ...(territory && { territory }), ...(product && { product }) });
     const cookie = req.headers.get('cookie') || '';
     const fwd    = { headers: { cookie } };
