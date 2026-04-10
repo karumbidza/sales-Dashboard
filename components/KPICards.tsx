@@ -9,6 +9,18 @@ function fmtVol(n: number | null | undefined): string {
   return n.toLocaleString('en', { maximumFractionDigits: 0 });
 }
 
+/** Render a volume value with a small muted "L" suffix (matches scorecard styling). */
+function VolValue({ n, big = false }: { n: number | null | undefined; big?: boolean }) {
+  const text = fmtVol(n);
+  const lClass = big ? 'text-sm font-medium text-gray-400' : 'text-[10px] font-medium text-gray-400';
+  return (
+    <>
+      {text}
+      {text !== '—' && <span className={`ml-1 ${lClass}`}>L</span>}
+    </>
+  );
+}
+
 function fmtPct(n: number | null | undefined): string {
   if (n == null) return '—';
   return `${n.toFixed(1)}%`;
@@ -260,7 +272,7 @@ export default function KPICards({ kpis }: { kpis: any }) {
       <KPICard
         icon={icons.barrel}
         label="MTD Volume"
-        value={`${fmtVol(mtd?.volume)} L`}
+        value={<VolValue n={mtd?.volume} big />}
         sub={budget?.daysInMonth
           ? `Budget: ${fmtVol(budget?.mtdBudget)} L (${budget?.daysElapsed}/${budget?.daysInMonth} days)`
           : `Budget: ${fmtVol(budget?.mtdBudget)} L`}
@@ -273,7 +285,7 @@ export default function KPICards({ kpis }: { kpis: any }) {
       <KPICard
         icon={icons.lightning}
         label="Avg Daily Sales"
-        value={`${fmtVol(mtd?.avgDaily)} L`}
+        value={<VolValue n={mtd?.avgDaily} big />}
         sub={`${mtd?.tradingDays ?? 0} days · ${mtd?.activeSites ?? 0} sites`}
       />
 
@@ -353,7 +365,7 @@ export default function KPICards({ kpis }: { kpis: any }) {
       <KPICard
         icon={icons.handshake}
         label="Petrotrade Vol"
-        value={`${fmtVol(petrotrade?.mtdVolume)} L`}
+        value={<VolValue n={petrotrade?.mtdVolume} big />}
         sub={`Margin: $${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}`}
       />
 
@@ -369,7 +381,7 @@ export default function KPICards({ kpis }: { kpis: any }) {
             icon={icons.dollar}
             label="Redan Flexi Volume"
             hint="Flexi blend + flexi diesel volume for the selected period."
-            value={`${fmtVol(cy)} L`}
+            value={<VolValue n={cy} big />}
             sub={py != null ? `${fmtVol(py)} L last month` : 'Flexi blend + flexi diesel'}
             growth={flexGrowth}
             growthLabel="vs prior month"
@@ -381,7 +393,7 @@ export default function KPICards({ kpis }: { kpis: any }) {
       <KPICard
         icon={icons.chart}
         label="YTD Volume"
-        value={`${fmtVol(ytd?.volume)} L`}
+        value={<VolValue n={ytd?.volume} big />}
         sub={(() => {
           const delta = siteDelta(ytd?.activeSites, growth?.priorYtdActiveSites);
           const priorTxt = `${fmtVol(growth?.priorYtdVolume)} L last year`;

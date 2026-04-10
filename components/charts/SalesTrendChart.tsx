@@ -322,13 +322,20 @@ function DailyDrilldownChart({ filters }: { filters?: ChartFilters }) {
     const dailyRate    = dim > 0 ? monthlyBudget  / dim : 0;
     const dailyStretch = dim > 0 ? monthlyStretch / dim : 0;
 
+    const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     let runningActual = 0;
     let runningBudget = 0;
     return filtered.map(d => {
       const total = Number(d.actual_volume || 0);
       runningActual += total;
       runningBudget += dailyRate;
-      const dayLabel = String(d.date || d.period || '').slice(8, 10);
+      const iso = String(d.date || d.period || '');
+      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      let dayLabel = iso.slice(8, 10);
+      if (m) {
+        const dt = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+        dayLabel = `${WEEKDAYS[dt.getDay()]} ${m[3]}`;
+      }
       return {
         ...d,
         dayLabel,
@@ -378,10 +385,6 @@ function DailyDrilldownChart({ filters }: { filters?: ChartFilters }) {
             <YAxis tickFormatter={fmtVol} tick={{ fontSize: 11 }} width={55} />
             <Tooltip content={<DailyDrillTooltip />} />
             <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-
-            <Bar dataKey="diesel_volume" name="Diesel" stackId="a" fill={COLORS.diesel} />
-            <Bar dataKey="blend_volume"  name="Blend"  stackId="a" fill={COLORS.blend} />
-            <Bar dataKey="ulp_volume"    name="ULP"    stackId="a" fill={COLORS.ulp} radius={[2,2,0,0]} />
 
             <Line
               type="monotone"

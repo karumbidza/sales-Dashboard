@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import KPICards from '@/components/KPICards';
 import SalesTrendChart from '@/components/charts/SalesTrendChart';
-import TerritoryChart from '@/components/charts/TerritoryChart';
 import TopSitesTable from '@/components/tables/TopSitesTable';
 import SiteBreakdownTable from '@/components/tables/SiteBreakdownTable';
 import DashboardFilters from '@/components/ui/DashboardFilters';
@@ -16,7 +15,7 @@ import UploadAuditTrail from '@/components/ui/UploadAuditTrail';
 import ReportGenerator from '@/components/ui/ReportGenerator';
 import UnmatchedRowsPanel from '@/components/ui/UnmatchedRowsPanel';
 import YearlyVolumeBudgetChart from '@/components/charts/YearlyVolumeBudgetChart';
-import TerritoryAnalysisChart from '@/components/charts/TerritoryAnalysisChart';
+import TerritoryScorecard from '@/components/charts/TerritoryScorecard';
 
 export interface Filters {
   dateFrom: string;
@@ -145,7 +144,7 @@ export default function DashboardPage() {
         fetch(`/api/kpis?${qs}`).then(r => r.json()),
         fetch(`/api/sales-trend?${qs}&granularity=daily`).then(r => r.json()),
         fetch(`/api/sales-trend?${qs}&granularity=monthly`).then(r => r.json()),
-        fetch(`/api/top-sites?${qs}&limit=500`).then(r => r.json()),
+        fetch(`/api/top-sites?${qs}&limit=500&sortBy=budget`).then(r => r.json()),
         fetch(`/api/territory-performance?${qs}`).then(r => r.json()),
       ]);
       setKpis(kpisData);
@@ -273,16 +272,9 @@ export default function DashboardPage() {
           <>
             <KPICards kpis={kpis} />
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mt-5">
-              <div className="xl:col-span-2 card">
-                <h2 className="text-sm font-semibold text-gray-800 mb-4">Territory Analysis</h2>
-                <TerritoryAnalysisChart data={territories} />
-              </div>
-              <div className="card">
-                <h2 className="text-sm font-semibold text-gray-800 mb-4">Territory Distribution</h2>
-                <TerritoryChart data={territories} />
-              </div>
-            </div>
+            <Section title="Territory Scorecard" sub="Sorted by volume">
+              <TerritoryScorecard data={territories} />
+            </Section>
 
             <Section title="Daily Volume Trend">
               <SalesTrendChart data={trend} type="daily" filters={filters} />
@@ -296,12 +288,8 @@ export default function DashboardPage() {
               }} />
             </Section>
 
-            <Section title="Top 10 Sites by Volume">
-              <TopSitesTable data={topSites} />
-            </Section>
-
-            <Section title="Territory Performance" sub="Aggregated by Territory Manager">
-              <SiteBreakdownTable data={territories} type="territory" />
+            <Section title="Top 20 Sites by Budget">
+              <TopSitesTable data={topSites.slice(0, 20)} />
             </Section>
           </>
         )}
@@ -310,8 +298,12 @@ export default function DashboardPage() {
         {!loading && activeTab === 'sites' && (
           <>
             <UnmatchedRowsPanel />
-            <Section title="Full Site Breakdown">
-              <SiteBreakdownTable data={topSites} type="sites" paginate />
+            <Section title="Full Site Breakdown" sub="Sorted by volume">
+              <SiteBreakdownTable
+                data={[...topSites].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))}
+                type="sites"
+                paginate
+              />
             </Section>
           </>
         )}

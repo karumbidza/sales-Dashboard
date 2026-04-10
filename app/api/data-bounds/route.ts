@@ -10,12 +10,13 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const row = await queryOne<any>(`
-      SELECT MIN(sale_date) AS min_date, MAX(sale_date) AS max_date
+      SELECT TO_CHAR(MIN(sale_date), 'YYYY-MM-DD') AS min_date,
+             TO_CHAR(MAX(sale_date), 'YYYY-MM-DD') AS max_date
       FROM sales
     `);
     return NextResponse.json({
-      minDate: row?.min_date ? String(row.min_date).slice(0, 10) : null,
-      maxDate: row?.max_date ? String(row.max_date).slice(0, 10) : null,
+      minDate: row?.min_date || null,
+      maxDate: row?.max_date || null,
     });
   } catch (err: any) {
     console.error('/api/data-bounds error:', err);

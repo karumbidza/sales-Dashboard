@@ -73,7 +73,7 @@ function buildReportHTML(data: any): string {
 
   // ── Inline SVG: stacked daily volume bar chart ─────────────────────────
   const dailyChartSVG = (rows: any[], info: { year: number; month: number; monthEndDay: number }): string => {
-    const W = 720, H = 240, P = { l: 42, r: 12, t: 8, b: 22 };
+    const W = 720, H = 240, P = { l: 42, r: 12, t: 8, b: 32 };
     const innerW = W - P.l - P.r;
     const innerH = H - P.t - P.b;
     if (!rows || rows.length === 0) {
@@ -126,51 +126,41 @@ function buildReportHTML(data: any): string {
       `);
     }
 
-    // Bars (stacked: diesel/blend/ulp)
-    const bars: string[] = [];
+    // Line chart only — total volume per day with weekday labels
+    const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const dots: string[] = [];
     const xLbls: string[] = [];
+    const linePoints: string[] = [];
     for (let day = 1; day <= lastDay; day++) {
       const r = byDay[day];
       const cx = P.l + xStep * (day - 0.5);
-      const left = cx - barW / 2;
-      let cumBottom = P.t + innerH;
 
-      const segs: [number, string][] = [
-        [Number(r?.diesel_volume || 0), '#1e40af'],
-        [Number(r?.blend_volume  || 0), '#0891b2'],
-        [Number(r?.ulp_volume    || 0), '#059669'],
-      ];
-      for (const [val, color] of segs) {
-        if (val <= 0) continue;
-        const h = (val / yMax) * innerH;
-        cumBottom -= h;
-        bars.push(`<rect x="${left}" y="${cumBottom}" width="${barW}" height="${h}" fill="${color}" />`);
-      }
-
-      // Total dot — colour by met budget/stretch
       const total = Number(r?.actual_volume || 0);
+      const cy = yScale(total);
+      linePoints.push(`${cx},${cy}`);
+
+      // Dot — colour by met budget/stretch
       if (total > 0) {
-        const cy = yScale(total);
         const metStretch = dailyRate > 0 && total >= dailyRate * 1.10;
         const metBudget  = dailyRate > 0 && total >= dailyRate;
-        const fill = metStretch ? '#16a34a' : metBudget ? '#84cc16' : '#ffffff';
+        const fill   = metStretch ? '#16a34a' : metBudget ? '#84cc16' : '#ffffff';
         const stroke = metStretch || metBudget ? '#ffffff' : '#6366f1';
-        const radius = metStretch ? 4 : metBudget ? 3.5 : 2.5;
+        const radius = metStretch ? 4 : metBudget ? 3.5 : 2.8;
         dots.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>`);
       }
 
-      // X labels — every day if range is short, every 2 days otherwise
-      const labelStep = lastDay <= 14 ? 1 : 2;
+      // X labels: show weekday + day for every day. Two-line label.
+      const dt = new Date(info.year, info.month - 1, day);
+      const wd = WEEKDAYS[dt.getDay()];
+      const labelStep = lastDay <= 16 ? 1 : 2;
       if (day === 1 || day % labelStep === 0 || day === lastDay) {
-        xLbls.push(`<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="8" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
+        xLbls.push(`<text x="${cx}" y="${H - 14}" text-anchor="middle" font-size="8" font-weight="600" fill="#374151">${wd}</text>`);
+        xLbls.push(`<text x="${cx}" y="${H - 4}"  text-anchor="middle" font-size="8" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
       }
     }
 
-    // Total line (over the bars)
-    const linePts = totals
-      .map((v, i) => `${P.l + xStep * (i + 0.5)},${yScale(v)}`)
-      .join(' ');
+    // Total line connecting daily points
+    const linePts = linePoints.join(' ');
 
     // Daily budget + stretch reference lines
     const budgetLine = dailyRate > 0 ? `
@@ -185,8 +175,7 @@ function buildReportHTML(data: any): string {
     return `
       <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
         ${ticks.join('')}
-        ${bars.join('')}
-        <polyline points="${linePts}" fill="none" stroke="#6366f1" stroke-width="2"/>
+        <polyline points="${linePts}" fill="none" stroke="#6366f1" stroke-width="2.2"/>
         ${budgetLine}
         ${stretchLine}
         ${dots.join('')}
@@ -224,14 +213,135 @@ function buildReportHTML(data: any): string {
         : `<span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:1px;margin-right:4px;vertical-align:middle"></span>`;
     return `
       <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-size:9px;color:#374151">
-        <span>${swatch('#1e40af')}Diesel</span>
-        <span>${swatch('#0891b2')}Blend</span>
-        <span>${swatch('#059669')}ULP</span>
-        <span>${swatch('#6366f1')}Total line</span>
+        <span>${swatch('#6366f1')}Total volume</span>
         <span>${swatch('#f59e0b', true)}Daily budget ${dailyRate > 0 ? `(${Math.round(dailyRate).toLocaleString('en')} L)` : ''}</span>
         <span>${swatch('#dc2626', true)}Daily stretch ${dailyStretch > 0 ? `(${Math.round(dailyStretch).toLocaleString('en')} L)` : ''}</span>
+        <span style="color:#6b7280">·</span>
+        <span style="color:#6b7280">Green dot = met stretch · Lime = met budget · White = below</span>
       </div>
     `;
+  };
+
+  // ── Territory Scorecard (HTML grid, mirrors dashboard component) ───────
+  const territoryScorecardHTML = (terrs: any[]): string => {
+    if (!terrs || terrs.length === 0) {
+      return `<div style="text-align:center;color:#9ca3af;font-size:11px;padding:24px">No territory data</div>`;
+    }
+    const fmtVolCompact = (n: number | null | undefined): string => {
+      if (n == null || !Number.isFinite(Number(n))) return '—';
+      const v = Number(n);
+      if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+      if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}K`;
+      return Math.round(v).toLocaleString('en');
+    };
+    const sorted = [...terrs].sort((a, b) => (Number(b.volume) || 0) - (Number(a.volume) || 0));
+    const shortName = (t: any) =>
+      String(t.territoryName || t.territoryCode || '?').replace(/'s Territory$/i, '').replace(/\sTerritory$/i, '');
+    const varColor = (pct: number | null | undefined) =>
+      pct == null ? '#9ca3af' : pct >= 100 ? '#16a34a' : pct >= 85 ? '#d97706' : '#dc2626';
+    const growthColor = (n: number | null | undefined) =>
+      n == null ? '#9ca3af' : n >= 0 ? '#16a34a' : '#dc2626';
+
+    const cards = sorted.map((t: any) => {
+      const volume   = Number(t.volume)        || 0;
+      const budget   = Number(t.budgetVolume)  || 0;
+      const stretch  = Number(t.stretchVolume) || 0;
+      const prior    = Number(t.priorVolume)   || 0;
+      const dieselV  = Number(t.dieselVol)     || 0;
+      const petrolV  = (Number(t.blendVol) || 0) + (Number(t.ulpVol) || 0);
+      const products = dieselV + petrolV;
+
+      const max = Math.max(volume, stretch * 1.05, 1);
+      const actualPct  = (volume  / max) * 100;
+      const budgetPct  = (budget  / max) * 100;
+      const stretchPct = (stretch / max) * 100;
+      const fill =
+        budget > 0 && volume >= stretch        ? '#10b981' :
+        budget > 0 && volume >= budget         ? '#84cc16' :
+        budget > 0 && volume >= 0.85 * budget  ? '#f59e0b' :
+        '#ef4444';
+
+      const vsBud = t.vsBudgetPct  != null ? Number(t.vsBudgetPct)  - 100 : null;
+      const vsStr = t.vsStretchPct != null ? Number(t.vsStretchPct) - 100 : null;
+      const fmtDelta = (n: number | null) =>
+        n == null ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+
+      const arrow = t.growthPct != null
+        ? `<span style="font-size:10px;font-weight:700;color:${growthColor(t.growthPct)}">
+             ${Number(t.growthPct) >= 0 ? '▲' : '▼'} ${Math.abs(Number(t.growthPct)).toFixed(1)}%
+           </span>`
+        : '';
+
+      return `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;display:flex;flex-direction:column">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+            <div>
+              <h3 style="font-size:11px;font-weight:700;color:#0f172a;line-height:1.1;margin:0">${esc(shortName(t))}</h3>
+              <p style="font-size:8px;color:#9ca3af;margin:1px 0 0">${t.siteCount ?? 0} sites${t.contributionPct != null ? ` · ${Number(t.contributionPct).toFixed(1)}%` : ''}</p>
+            </div>
+            ${arrow}
+          </div>
+
+          <p style="font-size:18px;font-weight:700;color:#0f172a;line-height:1;margin:1px 0 0;font-variant-numeric:tabular-nums">
+            ${fmtVolCompact(volume)} <span style="font-size:10px;font-weight:500;color:#9ca3af">L</span>
+          </p>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:4px;font-size:8px;font-variant-numeric:tabular-nums">
+            <div>
+              <p style="color:#9ca3af;text-transform:uppercase;letter-spacing:0.3px;font-weight:700;font-size:7px;margin:0">Budget</p>
+              <p style="color:#374151;font-family:monospace;margin:0">${fmtVolCompact(budget)} L</p>
+            </div>
+            <div>
+              <p style="color:#9ca3af;text-transform:uppercase;letter-spacing:0.3px;font-weight:700;font-size:7px;margin:0">Stretch</p>
+              <p style="color:#374151;font-family:monospace;margin:0">${fmtVolCompact(stretch)} L</p>
+            </div>
+            <div>
+              <p style="color:#9ca3af;text-transform:uppercase;letter-spacing:0.3px;font-weight:700;font-size:7px;margin:0">Prior</p>
+              <p style="color:#374151;font-family:monospace;margin:0">${fmtVolCompact(prior)} L</p>
+            </div>
+          </div>
+
+          <div style="position:relative;width:100%;height:6px;background:#f3f4f6;border-radius:3px;margin:5px 0;overflow:hidden">
+            <div style="position:absolute;top:0;left:0;height:100%;width:${actualPct}%;background:${fill};border-radius:3px"></div>
+            ${budget  > 0 ? `<div style="position:absolute;top:-2px;height:10px;width:1.5px;background:#f59e0b;left:${budgetPct}%"></div>`  : ''}
+            ${stretch > 0 ? `<div style="position:absolute;top:-2px;height:10px;width:1.5px;background:#f43f5e;left:${stretchPct}%"></div>` : ''}
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:4px;padding:3px 6px">
+              <p style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:#6b7280;margin:0">Vs Budget</p>
+              <p style="font-size:11px;font-weight:700;color:${varColor(t.vsBudgetPct)};margin:0;font-variant-numeric:tabular-nums">${fmtDelta(vsBud)}</p>
+            </div>
+            <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:4px;padding:3px 6px">
+              <p style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:#6b7280;margin:0">Vs Stretch</p>
+              <p style="font-size:11px;font-weight:700;color:${varColor(t.vsStretchPct)};margin:0;font-variant-numeric:tabular-nums">${fmtDelta(vsStr)}</p>
+            </div>
+          </div>
+
+          <div style="font-size:8.5px;line-height:1.5">
+            <div style="display:flex;justify-content:space-between"><span style="color:#6b7280">Avg daily</span><span style="font-family:monospace;color:#1f2937">${fmtVol(t.avgDaily)} L</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#6b7280">Avg price</span><span style="font-family:monospace;color:#1f2937">${t.avgPrice != null ? `$${Number(t.avgPrice).toFixed(2)}/L` : '—'}</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#6b7280">Cash ratio</span><span style="font-family:monospace;color:#1f2937">${t.cashRatioPct != null ? `${Number(t.cashRatioPct).toFixed(1)}%` : '—'}</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#6b7280">Net margin</span><span style="font-family:monospace;color:#1f2937">${t.netMarginCpl != null ? `$${(Number(t.netMarginCpl) / 100).toFixed(2)}/L` : '—'}</span></div>
+          </div>
+
+          ${products > 0 ? `
+          <div style="margin-top:5px;padding-top:5px;border-top:1px solid #f3f4f6">
+            <p style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:#6b7280;margin:0 0 2px">Product mix</p>
+            <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:#f3f4f6">
+              <div style="background:#1d4ed8;width:${(dieselV / products) * 100}%"></div>
+              <div style="background:#0891b2;width:${(petrolV / products) * 100}%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:7px;color:#6b7280;margin-top:1px;font-variant-numeric:tabular-nums">
+              <span>Diesel ${((dieselV / products) * 100).toFixed(0)}%</span>
+              <span>Petrol ${((petrolV / products) * 100).toFixed(0)}%</span>
+            </div>
+          </div>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    return `<div style="display:grid;grid-template-columns:repeat(${Math.min(sorted.length, 4)},1fr);gap:8px">${cards}</div>`;
   };
 
   // ── Inline SVG: territory donut ────────────────────────────────────────
@@ -350,7 +460,7 @@ function buildReportHTML(data: any): string {
     }
 
     return `
-      <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
         ${yTicks.join('')}
         ${bars.join('')}
         ${dividerSvg}
@@ -690,11 +800,11 @@ function buildReportHTML(data: any): string {
        border-bottom: 1.5px solid #e5e7eb;
        white-space: nowrap; }
   th.num { text-align: right; }
-  td { font-size: 10px; padding: 7px 10px;
+  td { font-size: 10.5px; padding: 8px 10px;
        border-bottom: 1px solid #f1f5f9;
        color: #111827; vertical-align: middle; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.muted { color: #9ca3af; }
+  td.muted { color: #4b5563; }
   /* Zebra striping — odd body rows get a soft tint for scannability */
   tbody tr:nth-child(even) { background: #fafbfc; }
   tbody tr:last-child td { border-bottom: none; }
@@ -733,10 +843,9 @@ function buildReportHTML(data: any): string {
   table.paged thead { display: table-header-group; }
   table.paged tfoot { display: table-row-group; }
   table.paged tr    { page-break-inside: avoid; }
-  /* Compact variant — only used on the long Full Site Breakdown table.
-     Keeps the same typography hierarchy but with slightly tighter padding. */
-  table.compact th { padding: 7px 8px; font-size: 9px; }
-  table.compact td { padding: 6px 8px; font-size: 9.5px; }
+  /* Compact variant — Full Site Breakdown. Larger font for visibility. */
+  table.compact th { padding: 8px 9px; font-size: 10px; }
+  table.compact td { padding: 7px 9px; font-size: 10.5px; }
 
   /* ── Charts row ────────────────────────────────────────────── */
   .charts-row { display: grid; grid-template-columns: 2.4fr 1fr;
@@ -785,14 +894,31 @@ function buildReportHTML(data: any): string {
       sub:   `${kpis.mtd?.tradingDays ?? 0} days reporting`,
     })}
 
-    ${/* 2. MTD Volume */ tile({
-      icon:  'barrel',
-      label: 'MTD Volume',
-      value: `${fmtVol(kpis.mtd?.volume)} L`,
-      sub:   `Budget: ${fmtVol(kpis.budget?.mtdBudget)} L (${kpis.budget?.daysElapsed ?? '—'}/${kpis.budget?.daysInMonth ?? '—'} days)`,
-      badgePct: kpis.budget?.vsBudgetPct,
-      highlight: true,
-    })}
+    ${/* 2. MTD Volume */ (() => {
+      const proj = kpis.projection;
+      const fullBudget = kpis.budget?.fullMonthBudget;
+      let projColor = '#374151';
+      if (proj && fullBudget > 0) {
+        const diffPct = Math.abs(proj.value - fullBudget) / fullBudget;
+        if (diffPct <= 0.05)            projColor = '#d97706';
+        else if (proj.value > fullBudget) projColor = '#16a34a';
+        else                             projColor = '#dc2626';
+      }
+      const projLine = proj
+        ? `<p style="font-size:10px;color:${projColor};font-weight:600;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;font-variant-numeric:tabular-nums">
+             ${proj.isNextMonth ? `${proj.label}: ~${fmtVol(proj.value)} L` : `Projected: ~${fmtVol(proj.value)} L`}
+             ${proj.isNextMonth ? `<span style="font-size:8px;background:#f3f4f6;color:#6b7280;padding:1px 5px;border-radius:3px;margin-left:4px;text-transform:uppercase;letter-spacing:0.4px">Next month</span>` : ''}
+           </p>`
+        : '';
+      return tile({
+        icon:  'barrel',
+        label: 'MTD Volume',
+        value: `${fmtVol(kpis.mtd?.volume)} L`,
+        sub:   `Budget: ${fmtVol(kpis.budget?.mtdBudget)} L (${kpis.budget?.daysElapsed ?? '—'}/${kpis.budget?.daysInMonth ?? '—'} days)${projLine}`,
+        badgePct: kpis.budget?.vsBudgetPct,
+        highlight: true,
+      });
+    })()}
 
     ${/* 3. Average Daily Sales */ tile({
       icon:  'lightning',
@@ -918,20 +1044,8 @@ function buildReportHTML(data: any): string {
 
   </div>
 
-  <!-- Charts row: territory analysis + territory donut -->
-  <div class="charts-row">
-    <div class="chart-card daily">
-      <div class="chart-title">Territory Analysis
-        <span style="font-size:9px;color:#9ca3af;font-weight:400">· Actual vs Budget vs Stretch</span>
-      </div>
-      ${territoryAnalysisSVG(territories || [])}
-      ${territoryAnalysisLegend()}
-    </div>
-    <div class="chart-card donut">
-      <div class="chart-title">Territory Distribution</div>
-      ${territoryDonutSVG(territories || [])}
-    </div>
-  </div>
+  <div class="stitle" style="margin-top:14px">Territory Scorecard <small>sorted by volume</small></div>
+  ${territoryScorecardHTML(territories || [])}
 
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
@@ -1007,44 +1121,7 @@ function buildReportHTML(data: any): string {
     <span>${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
   </div>
 
-  <div class="stitle">Territory Performance <small>aggregated by Territory Manager</small></div>
-  <div class="tcard"><table>
-    <thead><tr>
-      <th>Territory</th>
-      <th class="num">Sites</th>
-      <th class="num">Volume (L)</th>
-      <th class="num">Revenue</th>
-      <th class="num">Avg / Day</th>
-      <th class="num">Budget (L)</th>
-      <th class="num">Vs Budget</th>
-      <th class="num">Vs Stretch</th>
-      <th class="num">Net Margin</th>
-      <th class="num">Share</th>
-      <th class="num">Diesel</th>
-      <th class="num">Blend</th>
-      <th class="num">ULP</th>
-    </tr></thead>
-    <tbody>
-      ${(territories || []).map((t: any) => `
-        <tr>
-          <td><strong>${esc(t.territoryName || t.territoryCode)}</strong></td>
-          <td class="num muted">${t.siteCount ?? '—'}</td>
-          <td class="num">${fmtVol(t.volume)}</td>
-          <td class="num muted">${fmtRev(t.revenue)}</td>
-          <td class="num muted">${fmtVol(t.avgDaily)}</td>
-          <td class="num muted">${fmtVol(t.budgetVolume)}</td>
-          <td class="num" style="color:${varColor(t.vsBudgetPct)};font-weight:600">${fmtVar(t.vsBudgetPct)}</td>
-          <td class="num" style="color:${varColor(t.vsStretchPct)}">${fmtVar(t.vsStretchPct)}</td>
-          <td class="num">${t.netMarginCpl != null ? `${t.netMarginCpl.toFixed(1)} ¢/L` : '—'}</td>
-          <td class="num muted">${t.contributionPct != null ? t.contributionPct.toFixed(1) + '%' : '—'}</td>
-          <td class="num muted">${fmtVol(t.dieselVol)}</td>
-          <td class="num muted">${fmtVol(t.blendVol)}</td>
-          <td class="num muted">${fmtVol(t.ulpVol)}</td>
-        </tr>`).join('')}
-    </tbody>
-  </table></div>
-
-  <div class="stitle">Top 10 Sites <small>by volume</small></div>
+  <div class="stitle">Top 20 Sites <small>by budget</small></div>
   <div class="tcard"><table>
     <thead><tr>
       <th style="width:24px">#</th>
@@ -1227,7 +1304,7 @@ export async function POST(req: NextRequest) {
     // Unmatched submissions panel — global state, no filters.
     const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
       fetch(`${baseUrl}/api/kpis?${params}`,             fwd).then(r => r.json()),
-      fetch(`${baseUrl}/api/top-sites?${params}&limit=10`, fwd).then(r => r.json()),
+      fetch(`${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget`, fwd).then(r => r.json()),
       fetch(`${baseUrl}/api/territory-performance?${params}`, fwd).then(r => r.json()),
       fetch(`${baseUrl}/api/sales-trend?${trendParams}`, fwd).then(r => r.json()),
       fetch(`${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd).then(r => r.json()).catch(() => null),

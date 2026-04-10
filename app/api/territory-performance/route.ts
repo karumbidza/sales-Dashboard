@@ -21,6 +21,16 @@ export async function GET(req: NextRequest) {
     const rangeFrom = filters.dateFrom || `${new Date().getFullYear()}-01-01`;
     const rangeTo   = filters.dateTo   || new Date().toISOString().split('T')[0];
 
+    // Prior period of identical length, ending the day before rangeFrom.
+    // Used to compute growth_pct on the scorecard.
+    const _from   = new Date(rangeFrom);
+    const _to     = new Date(rangeTo);
+    const spanMs  = _to.getTime() - _from.getTime();
+    const priorTo   = new Date(_from.getTime() - 86_400_000);
+    const priorFrom = new Date(priorTo.getTime() - spanMs);
+    const priorFromIso = priorFrom.toISOString().split('T')[0];
+    const priorToIso   = priorTo.toISOString().split('T')[0];
+
     const baseJoins = `
       FROM sales s
       JOIN sites si ON s.site_code = si.site_code
@@ -48,6 +58,16 @@ export async function GET(req: NextRequest) {
         GROUP BY t.tm_code, t.tm_name
       ),
       grand AS (SELECT SUM(volume) AS grand_total FROM territory_totals),
+      -- Same-length prior window for growth %
+      prior_totals AS (
+        SELECT t.tm_code,
+               ROUND(SUM(${volExpr})::NUMERIC, 0) AS prior_volume
+        FROM sales s
+        JOIN sites si ON s.site_code = si.site_code
+        LEFT JOIN territories t ON si.territory_id = t.id
+        WHERE s.sale_date BETWEEN $${nextOffset + 3}::DATE AND $${nextOffset + 4}::DATE
+        GROUP BY t.tm_code
+      ),
       -- Net margin per territory from monthly site_margins,
       -- volume-weighted by actual monthly sales volumes.
       territory_margin_monthly_sales AS (
@@ -108,17 +128,25 @@ export async function GET(req: NextRequest) {
         tb.stretch_volume,
         tm.net_margin_cpl,
         tm.net_margin_total,
+        pt.prior_volume,
         ROUND((tt.volume / NULLIF(g.grand_total, 0) * 100)::NUMERIC, 2) AS contribution_pct,
         CASE WHEN tb.budget_volume > 0
           THEN ROUND((tt.volume / tb.budget_volume * 100)::NUMERIC, 1) END AS vs_budget_pct,
         CASE WHEN tb.stretch_volume > 0
-          THEN ROUND((tt.volume / tb.stretch_volume * 100)::NUMERIC, 1) END AS vs_stretch_pct
+          THEN ROUND((tt.volume / tb.stretch_volume * 100)::NUMERIC, 1) END AS vs_stretch_pct,
+        CASE WHEN pt.prior_volume > 0
+          THEN ROUND(((tt.volume - pt.prior_volume) / pt.prior_volume * 100)::NUMERIC, 1)
+          ELSE NULL END AS growth_pct,
+        CASE WHEN tt.volume > 0
+          THEN ROUND((tt.revenue / tt.volume)::NUMERIC, 4)
+          ELSE NULL END AS avg_price
       FROM territory_totals tt
       CROSS JOIN grand g
       LEFT JOIN territory_budget tb ON tt.territory_code = tb.tm_code
       LEFT JOIN territory_margin tm ON tt.territory_code = tm.tm_code
+      LEFT JOIN prior_totals     pt ON tt.territory_code = pt.tm_code
       ORDER BY tt.volume DESC
-    `, [...params, rangeFrom, rangeTo]);
+    `, [...params, rangeFrom, rangeTo, priorFromIso, priorToIso]);
 
     const data = rows.map((r: any) => ({
       territoryCode:   r.territory_code,
@@ -138,6 +166,9 @@ export async function GET(req: NextRequest) {
       vsStretchPct:    r.vs_stretch_pct ? parseFloat(r.vs_stretch_pct) : null,
       netMarginCpl:    r.net_margin_cpl != null ? parseFloat(r.net_margin_cpl) : null,
       netMarginTotal:  r.net_margin_total != null ? parseFloat(r.net_margin_total) : null,
+      priorVolume:     r.prior_volume    != null ? parseFloat(r.prior_volume)    : null,
+      growthPct:       r.growth_pct      != null ? parseFloat(r.growth_pct)      : null,
+      avgPrice:        r.avg_price       != null ? parseFloat(r.avg_price)       : null,
     }));
 
     return NextResponse.json({ data });
