@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/ingest/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/validate/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/ingest/preflight/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

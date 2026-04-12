@@ -54,6 +54,21 @@ export function parseExcelBuffer(buffer: Buffer | ArrayBuffer): ParsedSheets {
   return { sheetNames: wb.SheetNames, sheets };
 }
 
+// ── Compact format conversion (for client-side parsed data) ────────────────
+
+export function compactToSheets(
+  compact: Record<string, { columns: string[]; data: any[][] }>
+): { sheetNames: string[]; sheets: Record<string, Record<string, any>[]> } {
+  const sheetNames = Object.keys(compact);
+  const sheets: Record<string, Record<string, any>[]> = {};
+  for (const [name, { columns, data }] of Object.entries(compact)) {
+    sheets[name] = data.map(row =>
+      Object.fromEntries(columns.map((col, i) => [col, row[i] ?? null]))
+    );
+  }
+  return { sheetNames, sheets };
+}
+
 // ── Date parsing ───────────────────────────────────────────────────────────
 
 export function parseDate(val: any): string | null {

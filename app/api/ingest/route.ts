@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import {
-  parseExcelBuffer, safeFloat, safeStr, siteCode,
+  parseExcelBuffer, compactToSheets, safeFloat, safeStr, siteCode,
   parseBudgetMonthCol, parseDate, parseDateDayFirst,
 } from '@/lib/xlsx-parse';
 
@@ -538,20 +538,44 @@ export async function POST(req: NextRequest) {
   const startMs = Date.now();
 
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    const period = (formData.get('period') as string) || '';
-    const sheetsParam = (formData.get('sheets') as string) || '';
+    let parsedSheets: Record<string, Record<string, any>[]>;
+    let fileName: string;
+    let fileSize: number;
+    let period: string;
+    let sheetsParam: string;
 
-    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls'))
-      return NextResponse.json({ error: 'Only Excel files (.xlsx) are accepted' }, { status: 400 });
-    if (file.size > 50 * 1024 * 1024)
-      return NextResponse.json({ error: 'File too large (max 50MB)' }, { status: 400 });
+    const contentType = req.headers.get('content-type') || '';
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    if (buffer.length < 4 || !XLSX_MAGIC.every((b, i) => buffer[i] === b))
-      return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
+    if (contentType.includes('application/json')) {
+      // Client-side parsed data (compact format)
+      const body = await req.json();
+      if (!body.sheets) return NextResponse.json({ error: 'No sheet data provided' }, { status: 400 });
+      ({ sheets: parsedSheets } = compactToSheets(body.sheets));
+      fileName = body.fileName || 'upload.xlsx';
+      fileSize = body.fileSize || 0;
+      period = body.period || '';
+      sheetsParam = body.selectedSheets || '';
+    } else {
+      // Legacy: file upload via FormData
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      period = (formData.get('period') as string) || '';
+      sheetsParam = (formData.get('sheets') as string) || '';
+
+      if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls'))
+        return NextResponse.json({ error: 'Only Excel files (.xlsx) are accepted' }, { status: 400 });
+      if (file.size > 50 * 1024 * 1024)
+        return NextResponse.json({ error: 'File too large (max 50MB)' }, { status: 400 });
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      if (buffer.length < 4 || !XLSX_MAGIC.every((b, i) => buffer[i] === b))
+        return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
+
+      ({ sheets: parsedSheets } = parseExcelBuffer(buffer));
+      fileName = file.name;
+      fileSize = file.size;
+    }
 
     if (period && !/^\d{4}-\d{2}-\d{2}$/.test(period))
       return NextResponse.json({ error: 'Invalid period format — use YYYY-MM-DD' }, { status: 400 });
@@ -559,12 +583,11 @@ export async function POST(req: NextRequest) {
     // Create upload_log entry
     const logRow = await query<any>(
       `INSERT INTO upload_log (file_name, file_size_bytes, status) VALUES ($1, $2, 'pending') RETURNING id`,
-      [file.name, file.size]
+      [fileName, fileSize]
     );
     logId = logRow[0]?.id ?? null;
 
-    // Parse Excel
-    const { sheets } = parseExcelBuffer(buffer);
+    const sheets = parsedSheets;
 
     // Determine period month
     let periodMonth: string;
@@ -581,7 +604,7 @@ export async function POST(req: NextRequest) {
       : null;
 
     const wanted = (key: string) => selectedSheets === null || selectedSheets.has(key);
-    const sourceFile = file.name;
+    const sourceFile = fileName;
     const rowCounts: Record<string, number> = {};
 
     // Ingest in dependency order
@@ -625,7 +648,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      fileName: file.name,
+      fileName,
       periodMonth,
       rowCounts,
       durationMs,

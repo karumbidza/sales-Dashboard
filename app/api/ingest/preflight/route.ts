@@ -2,7 +2,7 @@
 // Pure-TypeScript preflight diff — no Python dependency.
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { parseExcelBuffer, siteCode, safeFloat, parseDate } from '@/lib/xlsx-parse';
+import { parseExcelBuffer, compactToSheets, siteCode, safeFloat, parseDate } from '@/lib/xlsx-parse';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,19 +36,30 @@ function fileRowMetrics(row: Record<string, any>) {
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls'))
-      return NextResponse.json({ error: 'Only .xlsx files accepted' }, { status: 400 });
-    if (file.size > 50 * 1024 * 1024)
-      return NextResponse.json({ error: 'File too large (max 50MB)' }, { status: 400 });
+    let sheets: Record<string, Record<string, any>[]>;
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    if (buffer.length < 4 || !XLSX_MAGIC.every((b, i) => buffer[i] === b))
-      return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
+    const contentType = req.headers.get('content-type') || '';
 
-    const { sheets } = parseExcelBuffer(buffer);
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      if (!body.sheets) return NextResponse.json({ error: 'No sheet data provided' }, { status: 400 });
+      ({ sheets } = compactToSheets(body.sheets));
+    } else {
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls'))
+        return NextResponse.json({ error: 'Only .xlsx files accepted' }, { status: 400 });
+      if (file.size > 50 * 1024 * 1024)
+        return NextResponse.json({ error: 'File too large (max 50MB)' }, { status: 400 });
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      if (buffer.length < 4 || !XLSX_MAGIC.every((b, i) => buffer[i] === b))
+        return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
+
+      ({ sheets } = parseExcelBuffer(buffer));
+    }
+
     const statusRows = sheets['STATUS REPORT'];
     if (!statusRows || statusRows.length === 0) {
       return NextResponse.json({ error: 'STATUS REPORT sheet not found' }, { status: 422 });

@@ -39,6 +39,58 @@ interface PreflightSummary {
   }[];
 }
 
+interface CompactSheet {
+  columns: string[];
+  data: any[][];
+}
+
+// ── Client-side Excel parsing ─────────────────────────────────────────────
+
+async function parseExcelClientSide(file: File): Promise<{
+  sheetNames: string[];
+  compact: Record<string, CompactSheet>;
+}> {
+  const XLSX = (await import('xlsx')).default;
+  const ab = await file.arrayBuffer();
+  const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+  const compact: Record<string, CompactSheet> = {};
+
+  for (const name of wb.SheetNames) {
+    const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
+    if (rows.length === 0) {
+      compact[name] = { columns: [], data: [] };
+    } else {
+      const columns = Object.keys(rows[0]);
+      compact[name] = {
+        columns,
+        data: rows.map(row => columns.map(col => {
+          const v = row[col];
+          if (v instanceof Date) return v.toISOString();
+          return v;
+        })),
+      };
+    }
+  }
+
+  return { sheetNames: wb.SheetNames, compact };
+}
+
+// Helper to POST JSON and safely parse response
+async function postJSON(url: string, body: any): Promise<{ ok: boolean; data: any }> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch {
+    throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`);
+  }
+  if (!res.ok && data.error) throw new Error(data.error);
+  return { ok: res.ok, data };
+}
+
 // ── Icons ──────────────────────────────────────────────────────────────────
 
 const IconPass = () => (
@@ -57,6 +109,16 @@ const IconError = () => (
   </svg>
 );
 
+// ── Sheet key ↔ name mapping ──────────────────────────────────────────────
+
+const SHEET_KEY_TO_NAME: Record<string, string> = {
+  name_index:    'NAME INDEX',
+  status_report: 'STATUS REPORT',
+  petrotrade:    'PETROTRADE',
+  margin:        'MARGIN',
+  volume_budget: 'VOLUME BUDGET',
+};
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 interface Props { onSuccess: () => void; }
@@ -65,6 +127,8 @@ type Phase = 'idle' | 'validating' | 'validated' | 'preflighting' | 'preflighted
 
 export default function UploadPanel({ onSuccess }: Props) {
   const [file, setFile]           = useState<File | null>(null);
+  const [parsed, setParsed]       = useState<{ sheetNames: string[]; compact: Record<string, CompactSheet> } | null>(null);
+  const [parsing, setParsing]     = useState(false);
   const [period, setPeriod]       = useState('');
   const [sheets, setSheets]       = useState<Record<string, boolean>>({
     name_index:    true,
@@ -84,7 +148,7 @@ export default function UploadPanel({ onSuccess }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
-    setFile(null); setPeriod(''); setPhase('idle');
+    setFile(null); setParsed(null); setParsing(false); setPeriod(''); setPhase('idle');
     setValidation(null); setPreflight(null); setRowCounts(null); setDuration(null);
     setIngestLog(''); setErrorMsg('');
     if (inputRef.current) inputRef.current.value = '';
@@ -92,36 +156,34 @@ export default function UploadPanel({ onSuccess }: Props) {
 
   const handleFile = (f: File) => {
     if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
-      setFile(f); setPhase('idle'); setValidation(null);
-      setRowCounts(null); setErrorMsg('');
+      setFile(f); setParsed(null); setParsing(true); setPhase('idle');
+      setValidation(null); setRowCounts(null); setErrorMsg('');
+
+      parseExcelClientSide(f).then(result => {
+        setParsed(result);
+        setParsing(false);
+      }).catch(err => {
+        setParsing(false);
+        setErrorMsg('Failed to read Excel file: ' + (err.message || err));
+        setPhase('error');
+      });
     }
   };
 
   // ── Phase 1: Validate ─────────────────────────────────────
 
   const handleValidate = async () => {
-    if (!file) return;
+    if (!file || !parsed) return;
     setPhase('validating');
     setValidation(null);
     setErrorMsg('');
 
-    const fd = new FormData();
-    fd.append('file', file);
-
     try {
-      const res  = await fetch('/api/validate', { method: 'POST', body: fd });
-      const text = await res.text();
-      let data: any;
-      try { data = JSON.parse(text); } catch {
-        setErrorMsg(`Server error (${res.status}): ${text.slice(0, 200)}`);
-        setPhase('error');
-        return;
-      }
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Validation failed');
-        setPhase('error');
-        return;
-      }
+      const { data } = await postJSON('/api/validate', {
+        fileName: file.name,
+        sheetNames: parsed.sheetNames,
+        sheets: parsed.compact,
+      });
       setValidation({ checks: [], summary: { errors: 0, warnings: 0, passed: 0 }, sheetRowCounts: {}, dateRange: null, fileName: '', ok: false, canIngest: false, ...data });
       setPhase('validated');
     } catch (e: any) {
@@ -133,30 +195,18 @@ export default function UploadPanel({ onSuccess }: Props) {
   // ── Phase 1.5: Preflight (diff check) ─────────────────────
 
   const handlePreflight = async () => {
-    if (!file) return;
+    if (!file || !parsed) return;
     setPhase('preflighting');
     setPreflight(null);
     setErrorMsg('');
 
-    const fd = new FormData();
-    fd.append('file', file);
-
     try {
-      const res  = await fetch('/api/ingest/preflight', { method: 'POST', body: fd });
-      const text = await res.text();
-      let data: any;
-      try { data = JSON.parse(text); } catch {
-        setErrorMsg(`Server error (${res.status}): ${text.slice(0, 200)}`);
-        setPhase('error');
-        return;
-      }
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Preflight failed');
-        setPhase('error');
-        return;
-      }
+      // Only send STATUS REPORT for preflight (that's all it uses)
+      const statusSheet = parsed.compact['STATUS REPORT'];
+      const { data } = await postJSON('/api/ingest/preflight', {
+        sheets: { 'STATUS REPORT': statusSheet },
+      });
       setPreflight(data);
-      // No existing data → skip the confirmation dialog and ingest immediately
       if ((data.rowsExisting ?? 0) === 0) {
         await handleIngest();
       } else {
@@ -171,24 +221,30 @@ export default function UploadPanel({ onSuccess }: Props) {
   // ── Phase 2: Ingest ───────────────────────────────────────
 
   const handleIngest = async () => {
-    if (!file) return;
+    if (!file || !parsed) return;
     setPhase('ingesting');
     const start = Date.now();
 
-    const fd = new FormData();
-    fd.append('file', file);
-    if (period) fd.append('period', period + '-01');
-    fd.append('sheets', Object.entries(sheets).filter(([, v]) => v).map(([k]) => k).join(','));
+    const selectedSheets = Object.entries(sheets).filter(([, v]) => v).map(([k]) => k);
+    const periodStr = period ? period + '-01' : '';
+
+    // Build compact sheets for only the selected sheets
+    const selectedCompact: Record<string, CompactSheet> = {};
+    for (const key of selectedSheets) {
+      const sheetName = SHEET_KEY_TO_NAME[key];
+      if (parsed.compact[sheetName]) {
+        selectedCompact[sheetName] = parsed.compact[sheetName];
+      }
+    }
 
     try {
-      const res  = await fetch('/api/ingest', { method: 'POST', body: fd });
-      const text = await res.text();
-      let data: any;
-      try { data = JSON.parse(text); } catch {
-        setErrorMsg(`Server error (${res.status}): ${text.slice(0, 200)}`);
-        setPhase('error');
-        return;
-      }
+      const { data } = await postJSON('/api/ingest', {
+        fileName: file.name,
+        fileSize: file.size,
+        period: periodStr,
+        selectedSheets: selectedSheets.join(','),
+        sheets: selectedCompact,
+      });
       setDuration(Date.now() - start);
 
       if (data.success) {
@@ -241,9 +297,9 @@ export default function UploadPanel({ onSuccess }: Props) {
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-        onClick={() => phase === 'idle' && inputRef.current?.click()}
+        onClick={() => phase === 'idle' && !parsing && inputRef.current?.click()}
         className={`border-2 border-dashed rounded-xl p-6 text-center transition
-          ${phase !== 'idle' ? 'cursor-default' : 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30'}
+          ${phase !== 'idle' || parsing ? 'cursor-default' : 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30'}
           ${dragging ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200'}`}
       >
         {file ? (
@@ -259,7 +315,7 @@ export default function UploadPanel({ onSuccess }: Props) {
               <p className="text-sm font-medium text-gray-800">{file.name}</p>
               <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(0)} KB</p>
             </div>
-            {phase === 'idle' && (
+            {phase === 'idle' && !parsing && (
               <button onClick={e => { e.stopPropagation(); reset(); }}
                       className="ml-auto text-xs text-gray-400 hover:text-red-500 transition">
                 Remove
@@ -282,8 +338,16 @@ export default function UploadPanel({ onSuccess }: Props) {
                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       </div>
 
+      {/* ── Reading spinner ──────────────────────────────── */}
+      {parsing && (
+        <div className="flex items-center justify-center gap-2 h-9 text-sm text-gray-500">
+          <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          Reading Excel file…
+        </div>
+      )}
+
       {/* ── Sheets to process ─────────────────────────────── */}
-      {file && phase === 'idle' && (
+      {file && parsed && phase === 'idle' && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Sheets to process</p>
@@ -331,7 +395,7 @@ export default function UploadPanel({ onSuccess }: Props) {
       )}
 
       {/* ── Period override ───────────────────────────────── */}
-      {file && phase !== 'done' && (
+      {file && parsed && phase !== 'done' && (
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500 whitespace-nowrap">Period override:</label>
           <input type="month" value={period} onChange={e => setPeriod(e.target.value)}
@@ -341,7 +405,7 @@ export default function UploadPanel({ onSuccess }: Props) {
       )}
 
       {/* ── Action buttons ────────────────────────────────── */}
-      {file && phase === 'idle' && (
+      {file && parsed && phase === 'idle' && (
         <button onClick={handleValidate}
                 className="w-full h-9 bg-[#1e3a5f] hover:bg-[#162d4a] text-white
                            text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
@@ -491,7 +555,7 @@ export default function UploadPanel({ onSuccess }: Props) {
           {/* Check list — only show non-pass items by default, all expandable */}
           {grouped && Object.entries(grouped).map(([sheet, sheetChecks]) => {
             const hasIssues = sheetChecks.some(c => c.status !== 'pass');
-            if (!hasIssues) return null; // only render sheets with issues
+            if (!hasIssues) return null;
             return (
               <div key={sheet}>
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{sheet}</p>
