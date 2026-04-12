@@ -50,7 +50,8 @@ async function parseExcelClientSide(file: File): Promise<{
   sheetNames: string[];
   compact: Record<string, CompactSheet>;
 }> {
-  const XLSX = (await import('xlsx')).default;
+  const xlsxModule = await import('xlsx');
+  const XLSX = xlsxModule.default ?? xlsxModule;
   const ab = await file.arrayBuffer();
   const wb = XLSX.read(ab, { type: 'array', cellDates: true });
   const compact: Record<string, CompactSheet> = {};
