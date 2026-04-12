@@ -75,16 +75,32 @@ export default function ReportGenerator({ filters }: Props) {
 
       const data = await res.json();
       if (data.html) {
-        // Render HTML into a hidden container, then convert to PDF
-        const container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.left = '-9999px';
-        container.style.top = '0';
-        container.style.width = '210mm'; // A4 width
-        container.innerHTML = data.html;
-        document.body.appendChild(container);
+        // Render in an iframe so the full HTML doc (with <style>) renders properly
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.top = '0';
+        iframe.style.left = '0';
+        iframe.style.width = '297mm';  // A4 landscape width
+        iframe.style.height = '210mm';
+        iframe.style.opacity = '0';
+        iframe.style.pointerEvents = 'none';
+        iframe.style.zIndex = '-1';
+        document.body.appendChild(iframe);
 
         try {
+          // Write HTML into iframe
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (!iframeDoc) throw new Error('Could not access iframe document');
+          iframeDoc.open();
+          iframeDoc.write(data.html);
+          iframeDoc.close();
+
+          // Wait for content to render
+          await new Promise(r => setTimeout(r, 500));
+
+          const body = iframeDoc.body;
+          if (!body || !body.innerHTML.trim()) throw new Error('Report rendered empty');
+
           const html2pdfModule = await import('html2pdf.js');
           const html2pdf = html2pdfModule.default ?? html2pdfModule;
 
@@ -92,15 +108,15 @@ export default function ReportGenerator({ filters }: Props) {
             .replace(/[^a-zA-Z0-9 _-]/g, '') + '.pdf';
 
           await html2pdf().set({
-            margin:       [10, 10, 10, 10],
+            margin:       [5, 5, 5, 5],
             filename:     pdfName,
             image:        { type: 'jpeg', quality: 0.95 },
-            html2canvas:  { scale: 2, useCORS: true, logging: false },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1122 },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' },
             pagebreak:    { mode: ['css', 'legacy'], avoid: ['tr', '.no-break'] },
-          }).from(container).save();
+          }).from(body).save();
         } finally {
-          document.body.removeChild(container);
+          document.body.removeChild(iframe);
         }
       }
       if (data.reportId) setReportId(data.reportId);
