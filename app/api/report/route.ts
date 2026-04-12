@@ -82,7 +82,8 @@ function buildReportHTML(data: any): string {
     const W = 720, H = 200, P = { l: 42, r: 12, t: 8, b: 32 };
     const innerW = W - P.l - P.r;
     const innerH = H - P.t - P.b;
-    if (!rows || rows.length === 0) {
+    const totalDays = info.monthEndDay;
+    if (!rows || rows.length === 0 || totalDays <= 0) {
       return `<svg viewBox="0 0 ${W} ${H}" width="100%">
         <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No daily data</text>
       </svg>`;
@@ -90,32 +91,29 @@ function buildReportHTML(data: any): string {
 
     const monthlyBudget  = rows[0]?.budget_volume  ?? 0;
     const monthlyStretch = rows[0]?.stretch_volume ?? 0;
-    const dailyRate      = info.monthEndDay > 0 ? monthlyBudget  / info.monthEndDay : 0;
-    const dailyStretch   = info.monthEndDay > 0 ? monthlyStretch / info.monthEndDay : 0;
+    const dailyRate      = totalDays > 0 ? monthlyBudget  / totalDays : 0;
+    const dailyStretch   = totalDays > 0 ? monthlyStretch / totalDays : 0;
 
-    // Use actual dates from data (respects report date filter)
+    // Map data by day-of-month (1..totalDays)
     const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const dataPoints: { date: string; volume: number; label: string; wd: string }[] = [];
+    const byDay: Record<number, number> = {};
+    let lastDayWithData = 0;
     for (const r of rows) {
-      const dateStr = String(r.date || r.period || '').slice(0, 10);
-      if (!dateStr || dateStr.length < 10) continue;
+      const d = parseInt(String(r.date || r.period || '').slice(8, 10), 10);
       const vol = Number(r?.actual_volume || 0);
-      const dt = new Date(dateStr + 'T00:00:00');
-      const day = dt.getDate();
-      const mon = MONTHS[dt.getMonth()];
-      dataPoints.push({ date: dateStr, volume: vol, label: `${day} ${mon}`, wd: WEEKDAYS[dt.getDay()] });
-    }
-    if (dataPoints.length === 0) {
-      return `<svg viewBox="0 0 ${W} ${H}" width="100%">
-        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No daily data</text>
-      </svg>`;
+      if (Number.isFinite(d) && d >= 1 && d <= totalDays) {
+        byDay[d] = vol;
+        if (vol > 0 && d > lastDayWithData) lastDayWithData = d;
+      }
     }
 
-    const nDays = dataPoints.length;
-    const totals = dataPoints.map(d => d.volume);
-    const yMax = Math.max(...totals, dailyRate, dailyStretch) * 1.12 || 1;
-    const xStep = innerW / nDays;
+    // Compute average daily volume for projection
+    const actualDays = Object.values(byDay).filter(v => v > 0);
+    const avgDaily = actualDays.length > 0 ? actualDays.reduce((a, b) => a + b, 0) / actualDays.length : 0;
+
+    const xStep = innerW / totalDays;
+    const allVols = Object.values(byDay);
+    const yMax = Math.max(...allVols, dailyRate, dailyStretch, avgDaily) * 1.12 || 1;
     const yScale = (v: number) => P.t + innerH - (v / yMax) * innerH;
 
     // Y-axis ticks
@@ -134,46 +132,62 @@ function buildReportHTML(data: any): string {
 
     const dots: string[] = [];
     const xLbls: string[] = [];
-    const linePoints: string[] = [];
-    const labelStep = nDays <= 16 ? 1 : nDays <= 31 ? 2 : 3;
+    const actualLine: string[] = [];
+    const projectionLine: string[] = [];
+    const labelStep = totalDays <= 16 ? 1 : 2;
 
-    for (let i = 0; i < nDays; i++) {
-      const dp = dataPoints[i];
-      const cx = P.l + xStep * (i + 0.5);
-      const cy = yScale(dp.volume);
-      linePoints.push(`${cx},${cy}`);
+    for (let day = 1; day <= totalDays; day++) {
+      const cx = P.l + xStep * (day - 0.5);
+      const vol = byDay[day] ?? 0;
+      const hasData = vol > 0;
+      const dt = new Date(info.year, info.month - 1, day);
+      const wd = WEEKDAYS[dt.getDay()];
 
-      if (dp.volume > 0) {
-        const metStretch = dailyRate > 0 && dp.volume >= dailyRate * 1.10;
-        const metBudget  = dailyRate > 0 && dp.volume >= dailyRate;
+      if (hasData) {
+        // Actual data point
+        const cy = yScale(vol);
+        actualLine.push(`${cx},${cy}`);
+
+        const metStretch = dailyRate > 0 && vol >= dailyRate * 1.10;
+        const metBudget  = dailyRate > 0 && vol >= dailyRate;
         const fill   = metStretch ? '#16a34a' : metBudget ? '#84cc16' : '#ffffff';
         const stroke = metStretch || metBudget ? '#ffffff' : '#6366f1';
         const radius = metStretch ? 4 : metBudget ? 3.5 : 2.8;
         dots.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>`);
       }
 
-      if (i === 0 || (i + 1) % labelStep === 0 || i === nDays - 1) {
-        xLbls.push(`<text x="${cx}" y="${H - 14}" text-anchor="middle" font-size="7.5" font-weight="600" fill="#374151">${dp.wd}</text>`);
-        xLbls.push(`<text x="${cx}" y="${H - 4}"  text-anchor="middle" font-size="7.5" fill="#6b7280">${dp.label}</text>`);
+      // Projection: from last actual data day through month end
+      if (day >= lastDayWithData && avgDaily > 0) {
+        const projY = yScale(avgDaily);
+        projectionLine.push(`${cx},${projY}`);
+      }
+
+      // X labels
+      if (day === 1 || day % labelStep === 0 || day === totalDays) {
+        xLbls.push(`<text x="${cx}" y="${H - 14}" text-anchor="middle" font-size="7" font-weight="600" fill="#374151">${wd}</text>`);
+        xLbls.push(`<text x="${cx}" y="${H - 4}"  text-anchor="middle" font-size="7" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
       }
     }
 
-    const linePts = linePoints.join(' ');
     const budgetLine = dailyRate > 0 ? `
       <line x1="${P.l}" x2="${W - P.r}" y1="${yScale(dailyRate)}" y2="${yScale(dailyRate)}"
-            stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="5 4"/>
-    ` : '';
+            stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="5 4"/>` : '';
     const stretchLine = dailyStretch > 0 ? `
       <line x1="${P.l}" x2="${W - P.r}" y1="${yScale(dailyStretch)}" y2="${yScale(dailyStretch)}"
-            stroke="#dc2626" stroke-width="1.4" stroke-dasharray="3 3"/>
-    ` : '';
+            stroke="#dc2626" stroke-width="1.4" stroke-dasharray="3 3"/>` : '';
+
+    // Phantom projection line (dashed, lighter)
+    const projLine = projectionLine.length > 1
+      ? `<polyline points="${projectionLine.join(' ')}" fill="none" stroke="#a5b4fc" stroke-width="1.5" stroke-dasharray="4 4"/>`
+      : '';
 
     return `
       <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:200px">
         ${ticks.join('')}
-        <polyline points="${linePts}" fill="none" stroke="#6366f1" stroke-width="2.2"/>
         ${budgetLine}
         ${stretchLine}
+        ${projLine}
+        <polyline points="${actualLine.join(' ')}" fill="none" stroke="#6366f1" stroke-width="2.2"/>
         ${dots.join('')}
         ${xLbls.join('')}
       </svg>
@@ -1323,8 +1337,9 @@ export async function POST(req: NextRequest) {
     const monthStart  = `${refYear}-${String(refMonth).padStart(2,'0')}-01`;
     const monthEndDay = new Date(refYear, refMonth, 0).getDate();
     const monthEnd    = `${refYear}-${String(refMonth).padStart(2,'0')}-${String(monthEndDay).padStart(2,'0')}`;
+    // Full month for daily chart — shows all days with phantom projection for remaining
     const trendParams = new URLSearchParams({
-      dateFrom, dateTo, granularity: 'daily',
+      dateFrom: monthStart, dateTo: monthEnd, granularity: 'daily',
       ...(territory && { territory }), ...(product && { product }),
     });
     const yearlyParams = new URLSearchParams({ ...(territory && { territory }) });
