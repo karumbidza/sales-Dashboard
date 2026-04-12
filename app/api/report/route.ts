@@ -1283,8 +1283,6 @@ export async function POST(req: NextRequest) {
       || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     const params = new URLSearchParams({ dateFrom, dateTo, ...(territory && { territory }), ...(product && { product }) });
     const cookie = req.headers.get('cookie') || '';
-    const internalKey = process.env.INTERNAL_API_SECRET || '__internal_dashboard_bypass__';
-    const ik = `_ik=${encodeURIComponent(internalKey)}`;
     const fwd = { headers: { cookie } };
 
     // Daily sales trend for the current month of the report's `dateTo` —
@@ -1329,12 +1327,12 @@ export async function POST(req: NextRequest) {
     console.log('Report: fetching data from', baseUrl);
 
     const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
-      fetchWithTimeout('kpis',        `${baseUrl}/api/kpis?${params}&${ik}`,             fwd),
-      fetchWithTimeout('topSites',    `${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget&${ik}`, fwd),
-      fetchWithTimeout('territories', `${baseUrl}/api/territory-performance?${params}&${ik}`, fwd),
-      fetchWithTimeout('trend',       `${baseUrl}/api/sales-trend?${trendParams}&${ik}`, fwd),
-      fetchWithTimeout('yearly',      `${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}&${ik}`, fwd),
-      fetchWithTimeout('unmatched',   `${baseUrl}/api/unmatched-rows?pageSize=10&${ik}`,  fwd),
+      fetchWithTimeout('kpis',        `${baseUrl}/api/kpis?${params}`,             fwd),
+      fetchWithTimeout('topSites',    `${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget`, fwd),
+      fetchWithTimeout('territories', `${baseUrl}/api/territory-performance?${params}`, fwd),
+      fetchWithTimeout('trend',       `${baseUrl}/api/sales-trend?${trendParams}`, fwd),
+      fetchWithTimeout('yearly',      `${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd),
+      fetchWithTimeout('unmatched',   `${baseUrl}/api/unmatched-rows?pageSize=10`,  fwd),
     ]);
 
     const failedEndpoints = [
