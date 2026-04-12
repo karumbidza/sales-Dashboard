@@ -75,48 +75,42 @@ export default function ReportGenerator({ filters }: Props) {
 
       const data = await res.json();
       if (data.html) {
-        // Render in an iframe so the full HTML doc (with <style>) renders properly
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.top = '0';
-        iframe.style.left = '0';
-        iframe.style.width = '297mm';  // A4 landscape width
-        iframe.style.height = '210mm';
-        iframe.style.opacity = '0';
-        iframe.style.pointerEvents = 'none';
-        iframe.style.zIndex = '-1';
-        document.body.appendChild(iframe);
+        // Open report in a new tab with a print toolbar.
+        // Browser's native print → "Save as PDF" handles SVGs, charts, and
+        // complex CSS perfectly — far better than html2canvas-based solutions.
+        const w = window.open('', '_blank');
+        if (w) {
+          // Inject a print toolbar before the report content
+          const toolbar = `
+            <div id="pdf-toolbar" style="
+              position:fixed; top:0; left:0; right:0; z-index:9999;
+              background:#1e3a5f; color:#fff; padding:10px 24px;
+              display:flex; align-items:center; justify-content:space-between;
+              font-family:-apple-system,sans-serif; font-size:13px;
+              box-shadow:0 2px 8px rgba(0,0,0,0.15);
+              -webkit-print-color-adjust:exact; print-color-adjust:exact;
+            ">
+              <span style="font-weight:600;">Redan Sales Dashboard — Report Preview</span>
+              <div style="display:flex;gap:10px;">
+                <button onclick="document.getElementById('pdf-toolbar').style.display='none';window.print();document.getElementById('pdf-toolbar').style.display='flex';"
+                  style="background:#22c55e;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;">
+                  Save as PDF
+                </button>
+                <button onclick="window.close()"
+                  style="background:rgba(255,255,255,0.15);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">
+                  Close
+                </button>
+              </div>
+            </div>
+            <style>
+              @media print { #pdf-toolbar { display:none !important; } }
+              body { padding-top: 52px; }
+            </style>`;
 
-        try {
-          // Write HTML into iframe
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-          if (!iframeDoc) throw new Error('Could not access iframe document');
-          iframeDoc.open();
-          iframeDoc.write(data.html);
-          iframeDoc.close();
-
-          // Wait for content to render
-          await new Promise(r => setTimeout(r, 500));
-
-          const body = iframeDoc.body;
-          if (!body || !body.innerHTML.trim()) throw new Error('Report rendered empty');
-
-          const html2pdfModule = await import('html2pdf.js');
-          const html2pdf = html2pdfModule.default ?? html2pdfModule;
-
-          const pdfName = (reportName || `Sales Report ${filters.dateFrom} to ${filters.dateTo}`)
-            .replace(/[^a-zA-Z0-9 _-]/g, '') + '.pdf';
-
-          await html2pdf().set({
-            margin:       [5, 5, 5, 5],
-            filename:     pdfName,
-            image:        { type: 'jpeg', quality: 0.95 },
-            html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 1122 },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' },
-            pagebreak:    { mode: ['css', 'legacy'], avoid: ['tr', '.no-break'] },
-          }).from(body).save();
-        } finally {
-          document.body.removeChild(iframe);
+          // Insert toolbar into the HTML
+          const htmlWithToolbar = data.html.replace('<body>', '<body>' + toolbar);
+          w.document.write(htmlWithToolbar);
+          w.document.close();
         }
       }
       if (data.reportId) setReportId(data.reportId);
