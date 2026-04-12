@@ -75,13 +75,32 @@ export default function ReportGenerator({ filters }: Props) {
 
       const data = await res.json();
       if (data.html) {
-        // Open report in new window and auto-trigger browser print → Save as PDF
-        const w = window.open('', '_blank');
-        if (w) {
-          w.document.write(data.html);
-          w.document.close();
-          // Give the browser a moment to render before triggering print
-          setTimeout(() => w.print(), 600);
+        // Render HTML into a hidden container, then convert to PDF
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.width = '210mm'; // A4 width
+        container.innerHTML = data.html;
+        document.body.appendChild(container);
+
+        try {
+          const html2pdfModule = await import('html2pdf.js');
+          const html2pdf = html2pdfModule.default ?? html2pdfModule;
+
+          const pdfName = (reportName || `Sales Report ${filters.dateFrom} to ${filters.dateTo}`)
+            .replace(/[^a-zA-Z0-9 _-]/g, '') + '.pdf';
+
+          await html2pdf().set({
+            margin:       [10, 10, 10, 10],
+            filename:     pdfName,
+            image:        { type: 'jpeg', quality: 0.95 },
+            html2canvas:  { scale: 2, useCORS: true, logging: false },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak:    { mode: ['css', 'legacy'], avoid: ['tr', '.no-break'] },
+          }).from(container).save();
+        } finally {
+          document.body.removeChild(container);
         }
       }
       if (data.reportId) setReportId(data.reportId);
