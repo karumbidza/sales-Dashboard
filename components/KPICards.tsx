@@ -304,14 +304,14 @@ export default function KPICards({ kpis }: { kpis: any }) {
             badgePct={vsStretch}
             value={
               <div className="grid grid-cols-2 gap-2 mt-1">
-                <div className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Vs Stretch</p>
+                <div className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-3 flex flex-col">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-auto pb-1.5 leading-tight">Vs Stretch</p>
                   <p className="text-2xl font-bold tabnum leading-tight" style={{ color: colorOf(vsStretch) }}>
                     {fmtVsBudget(vsStretch)}
                   </p>
                 </div>
-                <div className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Vs Budget</p>
+                <div className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-3 flex flex-col">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-auto pb-1.5 leading-tight">Vs Budget</p>
                   <p className="text-2xl font-bold tabnum leading-tight" style={{ color: colorOf(vsBudget) }}>
                     {fmtVsBudget(vsBudget)}
                   </p>
@@ -353,21 +353,49 @@ export default function KPICards({ kpis }: { kpis: any }) {
       />
 
       {/* 7. Cash Ratio */}
-      <KPICard
-        icon={icons.cash}
-        label="Cash Ratio"
-        hint="Cash collected ÷ total revenue. Sub line shows non-cash split: coupons and cards."
-        value={mtd?.cashRatio != null ? `${(mtd.cashRatio * 100).toFixed(1)}%` : '—'}
-        sub={`Coupon: ${fmtVol(mtd?.couponVolume)} L · Card: ${fmtVol(mtd?.cardVolume)} L`}
-      />
+      {(() => {
+        const cur = mtd?.cashRatio != null ? mtd.cashRatio * 100 : null;
+        const prior = growth?.priorMtdCashRatio != null ? growth.priorMtdCashRatio * 100 : null;
+        const delta = cur != null && prior != null && prior > 0 ? cur - prior : null;
+        return (
+          <KPICard
+            icon={icons.cash}
+            label="Cash Ratio"
+            hint="Cash collected ÷ total revenue. Sub line shows non-cash split: coupons and cards."
+            value={cur != null ? `${cur.toFixed(1)}%` : '—'}
+            sub={<>
+              Coupon: {fmtVol(mtd?.couponVolume)} L · Card: {fmtVol(mtd?.cardVolume)} L
+              {delta != null && (
+                <span className={`ml-1 ${delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  · {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}pp vs prior
+                </span>
+              )}
+            </>}
+          />
+        );
+      })()}
 
       {/* 8. Petrotrade */}
-      <KPICard
-        icon={icons.handshake}
-        label="Petrotrade Vol"
-        value={<VolValue n={petrotrade?.mtdVolume} big />}
-        sub={`Margin: $${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}`}
-      />
+      {(() => {
+        const cur = petrotrade?.mtdVolume ?? 0;
+        const prior = petrotrade?.priorMtdVolume ?? 0;
+        const pctChange = prior > 0 ? ((cur - prior) / prior) * 100 : null;
+        return (
+          <KPICard
+            icon={icons.handshake}
+            label="Petrotrade Vol"
+            value={<VolValue n={petrotrade?.mtdVolume} big />}
+            sub={<>
+              Margin: ${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}
+              {pctChange != null && (
+                <span className={`ml-1 ${pctChange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  · {pctChange >= 0 ? '▲' : '▼'} {Math.abs(pctChange).toFixed(1)}% vs prior
+                </span>
+              )}
+            </>}
+          />
+        );
+      })()}
 
       {/* 9. Redan Flexi */}
       {(() => {

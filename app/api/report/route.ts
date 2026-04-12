@@ -277,6 +277,9 @@ function buildReportHTML(data: any): string {
              ${Number(t.growthPct) >= 0 ? '▲' : '▼'} ${Math.abs(Number(t.growthPct)).toFixed(1)}%
            </span>`
         : '';
+      const vsBudgetLabel = t.vsBudgetPct != null
+        ? `<p style="font-size:8px;font-weight:500;color:${Number(t.vsBudgetPct) >= 100 ? '#22c55e' : '#9ca3af'};margin:1px 0 0;text-align:right">vs budget ${(Number(t.vsBudgetPct) - 100) >= 0 ? '+' : ''}${(Number(t.vsBudgetPct) - 100).toFixed(1)}%</p>`
+        : '';
 
       return `
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;display:flex;flex-direction:column">
@@ -285,7 +288,7 @@ function buildReportHTML(data: any): string {
               <h3 style="font-size:11px;font-weight:700;color:#0f172a;line-height:1.1;margin:0">${esc(shortName(t))}</h3>
               <p style="font-size:8px;color:#9ca3af;margin:1px 0 0">${t.siteCount ?? 0} sites${t.contributionPct != null ? ` · ${Number(t.contributionPct).toFixed(1)}%` : ''}</p>
             </div>
-            ${arrow}
+            <div style="text-align:right">${arrow}${vsBudgetLabel}</div>
           </div>
 
           <p style="font-size:18px;font-weight:700;color:#0f172a;line-height:1;margin:1px 0 0;font-variant-numeric:tabular-nums">
@@ -941,12 +944,12 @@ function buildReportHTML(data: any): string {
       const badge = (vsS ?? 0) >= 100 ? 'STRETCH ACHIEVED' : (vsB ?? 0) >= 100 ? 'BUDGET MET' : undefined;
       const dual = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px">
-          <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:6px;padding:10px 10px">
-            <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#6b7280;margin-bottom:5px">Vs Stretch</p>
+          <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:6px;padding:10px 10px;display:flex;flex-direction:column">
+            <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#6b7280;margin-bottom:auto;padding-bottom:5px;line-height:1.3">Vs Stretch</p>
             <p style="font-size:20px;font-weight:700;color:${colorOf(vsS)};line-height:1.1;font-variant-numeric:tabular-nums">${fmtVar(vsS)}</p>
           </div>
-          <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:6px;padding:10px 10px">
-            <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#6b7280;margin-bottom:5px">Vs Budget</p>
+          <div style="border:1px solid #f3f4f6;background:#f9fafb;border-radius:6px;padding:10px 10px;display:flex;flex-direction:column">
+            <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#6b7280;margin-bottom:auto;padding-bottom:5px;line-height:1.3">Vs Budget</p>
             <p style="font-size:20px;font-weight:700;color:${colorOf(vsB)};line-height:1.1;font-variant-numeric:tabular-nums">${fmtVar(vsB)}</p>
           </div>
         </div>
@@ -994,21 +997,35 @@ function buildReportHTML(data: any): string {
               : 'Net gross margin',
     })}
 
-    ${/* 7. Cash Ratio */ tile({
-      icon:  'cash',
-      label: 'Cash Ratio',
-      value: kpis.mtd?.cashRatio != null
-              ? `${(kpis.mtd.cashRatio * 100).toFixed(1)}%`
-              : '—',
-      sub:   `Coupon: ${fmtVol(kpis.mtd?.couponVolume)} L · Card: ${fmtVol(kpis.mtd?.cardVolume)} L`,
-    })}
+    ${/* 7. Cash Ratio */ (() => {
+      const cur = kpis.mtd?.cashRatio != null ? kpis.mtd.cashRatio * 100 : null;
+      const prior = kpis.growth?.priorMtdCashRatio != null ? kpis.growth.priorMtdCashRatio * 100 : null;
+      const delta = cur != null && prior != null && prior > 0 ? cur - prior : null;
+      const deltaHtml = delta != null
+        ? ` <span style="color:${delta >= 0 ? '#16a34a' : '#dc2626'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}pp vs prior</span>`
+        : '';
+      return tile({
+        icon:  'cash',
+        label: 'Cash Ratio',
+        value: cur != null ? `${cur.toFixed(1)}%` : '—',
+        sub:   `Coupon: ${fmtVol(kpis.mtd?.couponVolume)} L · Card: ${fmtVol(kpis.mtd?.cardVolume)} L${deltaHtml}`,
+      });
+    })()}
 
-    ${/* 8. Petrotrade */ tile({
-      icon:  'handshake',
-      label: 'Petrotrade Vol',
-      value: `${fmtVol(kpis.petrotrade?.mtdVolume)} L`,
-      sub:   `Margin: ${fmtRev(kpis.petrotrade?.mtdMargin)}`,
-    })}
+    ${/* 8. Petrotrade */ (() => {
+      const cur = kpis.petrotrade?.mtdVolume ?? 0;
+      const prior = kpis.petrotrade?.priorMtdVolume ?? 0;
+      const pct = prior > 0 ? ((cur - prior) / prior) * 100 : null;
+      const pctHtml = pct != null
+        ? ` <span style="color:${pct >= 0 ? '#16a34a' : '#dc2626'}">${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}% vs prior</span>`
+        : '';
+      return tile({
+        icon:  'handshake',
+        label: 'Petrotrade Vol',
+        value: `${fmtVol(cur)} <span style="font-size:10px;font-weight:500;color:#9ca3af">L</span>`,
+        sub:   `Margin: ${fmtRev(kpis.petrotrade?.mtdMargin)}${pctHtml}`,
+      });
+    })()}
 
     ${/* 9. Redan Flexi Volume */ (() => {
       const cy = kpis.mtd?.flexVolume;

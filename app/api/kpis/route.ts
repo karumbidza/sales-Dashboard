@@ -91,7 +91,10 @@ export async function GET(req: NextRequest) {
     const priorMtdRow = await queryOne<any>(`
       SELECT COALESCE(SUM(${volExpr}), 0) AS volume,
              COUNT(DISTINCT s.site_code) AS active_sites,
-             COALESCE(SUM(s.flex_blend_volume + s.flex_diesel_volume), 0) AS flex_volume
+             COALESCE(SUM(s.flex_blend_volume + s.flex_diesel_volume), 0) AS flex_volume,
+             CASE WHEN SUM(${volExpr}) > 0
+               THEN SUM(COALESCE(s.cash_sale_value,0)) / SUM(${revExpr})
+               ELSE 0 END AS cash_ratio
       ${baseJoins}
       ${priorMtdFilters.where}
     `, priorMtdFilters.params);
@@ -243,6 +246,16 @@ export async function GET(req: NextRequest) {
       ${filters.territory ? `AND t.tm_code = $3` : ''}
     `, [mtdFrom, isoToday, ...(filters.territory ? [filters.territory.toUpperCase()] : [])]);
 
+    // ── PRIOR MONTH PETROTRADE ─────────────────────────────────────────────
+    const priorPetroRow = await queryOne<any>(`
+      SELECT COALESCE(SUM(pt.volume_litres), 0) AS petrotrade_volume
+      FROM petrotrade_sales pt
+      JOIN sites si ON pt.site_code = si.site_code
+      LEFT JOIN territories t ON si.territory_id = t.id
+      WHERE pt.sale_date >= $1 AND pt.sale_date <= $2
+      ${filters.territory ? `AND t.tm_code = $3` : ''}
+    `, [priorMtdFrom, priorMtdTo, ...(filters.territory ? [filters.territory.toUpperCase()] : [])]);
+
     // ── ASSEMBLE ────────────────────────────────────────────────────────────
     const mtdVolume    = parseFloat(mtdRow?.volume   || 0);
     const ytdVolume    = parseFloat(ytdRow?.volume   || 0);
@@ -391,10 +404,12 @@ export async function GET(req: NextRequest) {
         priorMtdActiveSites: parseInt(priorMtdRow?.active_sites || 0),
         priorYtdActiveSites: parseInt(priorYtdRow?.active_sites || 0),
         priorMtdFlexVolume:  round2(parseFloat(priorMtdRow?.flex_volume || 0)),
+        priorMtdCashRatio:   round4(parseFloat(priorMtdRow?.cash_ratio || 0)),
       },
       petrotrade: {
         mtdVolume:  round2(parseFloat(petroRow?.petrotrade_volume || 0)),
         mtdMargin:  round2(parseFloat(petroRow?.petrotrade_margin  || 0)),
+        priorMtdVolume: round2(parseFloat(priorPetroRow?.petrotrade_volume || 0)),
       },
       margin: {
         avgCplPerSite:    marginRow?.avg_cpl_per_site != null ? round2(parseFloat(marginRow.avg_cpl_per_site)) : null,
