@@ -10,7 +10,8 @@ import {
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120; // Vercel Pro allows up to 300s
 
-// Rate limiter: max 5 ingestion requests per IP per minute
+// Rate limiter: max 100 ingestion requests per IP per minute
+// (high limit because chunked uploads send many small requests)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -19,7 +20,7 @@ function checkRateLimit(ip: string): boolean {
     rateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
     return true;
   }
-  if (entry.count >= 5) return false;
+  if (entry.count >= 100) return false;
   entry.count++;
   return true;
 }
