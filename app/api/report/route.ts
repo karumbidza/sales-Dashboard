@@ -846,8 +846,7 @@ function buildReportHTML(data: any): string {
          font-size: 8.5px; color: #9ca3af; }
 
   /* ── Page breaks ───────────────────────────────────────────── */
-  .page { page-break-after: always; }
-  .page:last-child { page-break-after: auto; }
+  .page + .page, .page + div { page-break-before: always; }
   .pghdr { display: flex; justify-content: space-between; align-items: baseline;
            margin-bottom: 8px; padding-bottom: 6px;
            border-bottom: 2px solid #1e3a5f; }
