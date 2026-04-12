@@ -110,7 +110,13 @@ export default function UploadPanel({ onSuccess }: Props) {
 
     try {
       const res  = await fetch('/api/validate', { method: 'POST', body: fd });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch {
+        setErrorMsg(`Server error (${res.status}): ${text.slice(0, 200)}`);
+        setPhase('error');
+        return;
+      }
       if (!res.ok) {
         setErrorMsg(data.error || 'Validation failed');
         setPhase('error');
@@ -137,7 +143,13 @@ export default function UploadPanel({ onSuccess }: Props) {
 
     try {
       const res  = await fetch('/api/ingest/preflight', { method: 'POST', body: fd });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch {
+        setErrorMsg(`Server error (${res.status}): ${text.slice(0, 200)}`);
+        setPhase('error');
+        return;
+      }
       if (!res.ok) {
         setErrorMsg(data.error || 'Preflight failed');
         setPhase('error');
@@ -170,7 +182,13 @@ export default function UploadPanel({ onSuccess }: Props) {
 
     try {
       const res  = await fetch('/api/ingest', { method: 'POST', body: fd });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch {
+        setErrorMsg(`Server error (${res.status}): ${text.slice(0, 200)}`);
+        setPhase('error');
+        return;
+      }
       setDuration(Date.now() - start);
 
       if (data.success) {

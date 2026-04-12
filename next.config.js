@@ -26,6 +26,8 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // Ensure xlsx (SheetJS) is bundled as a Node.js module, not tree-shaken
+  serverExternalPackages: ['xlsx'],
   async headers() {
     return [
       {
