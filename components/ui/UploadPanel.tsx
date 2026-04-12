@@ -233,7 +233,7 @@ export default function UploadPanel({ onSuccess }: Props) {
   };
 
   // ── Phase 1.5: Preflight (diff check) ─────────────────────
-  // Only needs STATUS REPORT with ~7 columns for the diff.
+  // Compute diff client-side. Only ask server for existing DB rows.
 
   const handlePreflight = async () => {
     if (!file || !parsed) return;
@@ -245,24 +245,117 @@ export default function UploadPanel({ onSuccess }: Props) {
       const srSheet = parsed.compact['STATUS REPORT'];
       if (!srSheet) throw new Error('STATUS REPORT sheet not found');
 
-      // Only send the columns the preflight actually uses
-      const preflightCols = [
-        'SITE CODE', 'Date',
-        'DIESEL SALES (V)', 'BLEND SALES (V)', 'ULP_Sales_Qty',
-        'DIESEL SALES ($)', 'BLEND SALES ($)', 'ULP SALES ($)',
-        'FLEX BLEND (V)', 'FLEX DIESEL (V)', 'FLEX BLEND ($)', 'FLEX DIESL ($)',
-      ];
-      const slim = sliceColumns(srSheet, preflightCols);
+      // Compute file-side metrics locally
+      const colIdx = (name: string) => srSheet.columns.indexOf(name);
+      const iSiteCode = colIdx('SITE CODE');
+      const iDate = colIdx('Date');
+      const iDieselV = colIdx('DIESEL SALES (V)');
+      const iBlendV = colIdx('BLEND SALES (V)');
+      const iUlpV = colIdx('ULP_Sales_Qty');
+      const iFlexBV = colIdx('FLEX BLEND (V)');
+      const iFlexDV = colIdx('FLEX DIESEL (V)');
+      const iDieselR = colIdx('DIESEL SALES ($)');
+      const iBlendR = colIdx('BLEND SALES ($)');
+      const iUlpR = colIdx('ULP SALES ($)');
+      const iFlexBR = colIdx('FLEX BLEND ($)');
+      const iFlexDR = colIdx('FLEX DIESL ($)');
 
-      const { data } = await postJSON('/api/ingest/preflight', {
-        sheets: { 'STATUS REPORT': slim },
-      });
-      setPreflight(data);
-      if ((data.rowsExisting ?? 0) === 0) {
-        await handleIngest();
-      } else {
-        setPhase('preflighted');
+      const num = (row: any[], i: number) => (i < 0 || row[i] == null) ? 0 : Number(row[i]) || 0;
+
+      const parseD = (v: any): string | null => {
+        if (v == null) return null;
+        if (typeof v === 'string' && v.length >= 10) {
+          const d = new Date(v);
+          if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+        }
+        return null;
+      };
+
+      // Build file rows map: key → [total_vol, diesel_vol, blend_vol, ulp_vol, total_rev]
+      const fileRows = new Map<string, number[]>();
+      let dateFrom: string | null = null;
+      let dateTo: string | null = null;
+
+      for (const row of srSheet.data) {
+        const rawCode = row[iSiteCode];
+        const code = rawCode ? String(rawCode).trim().toUpperCase() : null;
+        const date = parseD(row[iDate]);
+        if (!code || !date) continue;
+
+        const dV = num(row, iDieselV), bV = num(row, iBlendV), uV = num(row, iUlpV);
+        const fBV = num(row, iFlexBV), fDV = num(row, iFlexDV);
+        const dR = num(row, iDieselR), bR = num(row, iBlendR), uR = num(row, iUlpR);
+        const fBR = num(row, iFlexBR), fDR = num(row, iFlexDR);
+
+        fileRows.set(`${code}|${date}`, [
+          dV + bV + uV + fBV + fDV, // total_volume
+          dV, bV, uV,
+          dR + bR + uR + fBR + fDR, // total_revenue
+        ]);
+        if (!dateFrom || date < dateFrom) dateFrom = date;
+        if (!dateTo || date > dateTo) dateTo = date;
       }
+
+      // If no valid rows or no date range, skip preflight and ingest directly
+      if (!dateFrom || !dateTo || fileRows.size === 0) {
+        await handleIngest();
+        return;
+      }
+
+      // Ask server for existing DB rows (tiny request: just two dates)
+      const { data } = await postJSON('/api/ingest/preflight', { dateFrom, dateTo });
+      const existing: Record<string, number[]> = data.existing || {};
+      const rowsExisting = Object.keys(existing).length;
+
+      // No existing data → skip confirmation
+      if (rowsExisting === 0) {
+        await handleIngest();
+        return;
+      }
+
+      // Compute diff locally
+      const EPSILON = 0.001;
+      let newRows = 0, changedRows = 0, unchangedRows = 0;
+      const sitesChanged = new Set<string>();
+      const sampleChanges: PreflightSummary['sampleChanges'] = [];
+      const FIELD_NAMES = ['total_volume', 'diesel_sales_volume', 'blend_sales_volume', 'ulp_sales_volume', 'total_revenue'];
+
+      for (const [key, fileVals] of Array.from(fileRows)) {
+        const ex = existing[key];
+        if (!ex) { newRows++; continue; }
+
+        const diffs: [string, number, number][] = [];
+        for (let i = 0; i < 5; i++) {
+          if (Math.abs(fileVals[i] - ex[i]) > EPSILON) {
+            diffs.push([FIELD_NAMES[i], ex[i], fileVals[i]]);
+          }
+        }
+
+        if (diffs.length > 0) {
+          changedRows++;
+          const site = key.split('|')[0];
+          sitesChanged.add(site);
+          if (sampleChanges.length < 10) {
+            const [field, oldV, newV] = diffs[0];
+            sampleChanges.push({
+              siteCode: site, date: key.split('|')[1],
+              field, oldValue: oldV.toFixed(3), newValue: newV.toFixed(3),
+            });
+          }
+        } else {
+          unchangedRows++;
+        }
+      }
+
+      setPreflight({
+        dateFrom, dateTo,
+        rowsInFile: fileRows.size,
+        rowsExisting,
+        newRows, changedRows, unchangedRows,
+        sitesWithChanges: Array.from(sitesChanged).sort(),
+        sampleChanges,
+      });
+      setPhase('preflighted');
     } catch (e: any) {
       setErrorMsg(e.message || 'Preflight failed');
       setPhase('error');
