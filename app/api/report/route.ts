@@ -2,6 +2,12 @@
 // Generates a structured PDF report using Puppeteer (headless Chrome)
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
+import { GET as kpisHandler } from '@/app/api/kpis/route';
+import { GET as topSitesHandler } from '@/app/api/top-sites/route';
+import { GET as territoriesHandler } from '@/app/api/territory-performance/route';
+import { GET as trendHandler } from '@/app/api/sales-trend/route';
+import { GET as yearlyHandler } from '@/app/api/yearly-volume-vs-budget/route';
+import { GET as unmatchedHandler } from '@/app/api/unmatched-rows/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -1277,16 +1283,10 @@ export async function POST(req: NextRequest) {
       const tmp = dateFrom; dateFrom = dateTo; dateTo = tmp;
     }
 
-    // Fetch all data for the report. Forward the inbound cookie so the
-    // internal API calls survive middleware auth.
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+    // Call API handlers directly (no HTTP round-trips, no middleware auth)
+    const baseUrl = 'http://localhost';  // only used for URL parsing, not actual fetching
     const params = new URLSearchParams({ dateFrom, dateTo, ...(territory && { territory }), ...(product && { product }) });
-    const cookie = req.headers.get('cookie') || '';
-    const fwd = { headers: { cookie } };
 
-    // Daily sales trend for the current month of the report's `dateTo` —
-    // independent of dateFrom so the chart always shows a full month.
     const refDate     = new Date(dateTo);
     const refYear     = refDate.getFullYear();
     const refMonth    = refDate.getMonth() + 1;
@@ -1297,42 +1297,27 @@ export async function POST(req: NextRequest) {
       dateFrom: monthStart, dateTo: monthEnd, granularity: 'daily',
       ...(territory && { territory }), ...(product && { product }),
     });
-
-    // Yearly chart only honors non-date filters (territory) — its scope is
-    // always the full year that contains the latest sale_date.
     const yearlyParams = new URLSearchParams({ ...(territory && { territory }) });
 
-    // Unmatched submissions panel — global state, no filters.
-    // Fetch with a 30-second timeout to prevent hanging
-    const fetchWithTimeout = async (label: string, url: string, opts: any, timeoutMs = 30_000) => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // Helper: call a route handler directly and parse its JSON response
+    const callHandler = async (label: string, handler: Function, qs: URLSearchParams) => {
       try {
-        const r = await fetch(url, { ...opts, signal: controller.signal });
-        clearTimeout(timer);
-        if (!r.ok) {
-          const text = await r.text().catch(() => '');
-          console.error(`Report sub-fetch ${label} failed: ${r.status} ${text.slice(0, 200)}`);
-          return { error: `${label} returned ${r.status}` };
-        }
-        return await r.json();
+        const fakeReq = new NextRequest(`${baseUrl}/api/?${qs}`);
+        const res = await handler(fakeReq);
+        return await res.json();
       } catch (err: any) {
-        clearTimeout(timer);
-        const msg = err.name === 'AbortError' ? `${label} timed out after ${timeoutMs/1000}s` : `${label}: ${err.message}`;
-        console.error(`Report sub-fetch error: ${msg}`);
-        return { error: msg };
+        console.error(`Report handler ${label} error:`, err.message);
+        return { error: `${label}: ${err.message}` };
       }
     };
 
-    console.log('Report: fetching data from', baseUrl);
-
     const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
-      fetchWithTimeout('kpis',        `${baseUrl}/api/kpis?${params}`,             fwd),
-      fetchWithTimeout('topSites',    `${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget`, fwd),
-      fetchWithTimeout('territories', `${baseUrl}/api/territory-performance?${params}`, fwd),
-      fetchWithTimeout('trend',       `${baseUrl}/api/sales-trend?${trendParams}`, fwd),
-      fetchWithTimeout('yearly',      `${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd),
-      fetchWithTimeout('unmatched',   `${baseUrl}/api/unmatched-rows?pageSize=10`,  fwd),
+      callHandler('kpis',        kpisHandler,        params),
+      callHandler('topSites',    topSitesHandler,     new URLSearchParams(params.toString() + '&limit=20&sortBy=budget')),
+      callHandler('territories', territoriesHandler,  params),
+      callHandler('trend',       trendHandler,        trendParams),
+      callHandler('yearly',      yearlyHandler,       yearlyParams).catch(() => null),
+      callHandler('unmatched',   unmatchedHandler,    new URLSearchParams({ pageSize: '10' })).catch(() => null),
     ]);
 
     const failedEndpoints = [
@@ -1348,10 +1333,6 @@ export async function POST(req: NextRequest) {
         error: 'Report data failed: ' + failedEndpoints.join('; '),
       }, { status: 500 });
     }
-
-    // Treat yearly and unmatched as optional
-    if (yearlyRes?.error) console.warn('Yearly data unavailable:', yearlyRes.error);
-    if (unmatchedRes?.error) console.warn('Unmatched data unavailable:', unmatchedRes.error);
 
     // Create report record
     const reportRow = await queryOne<any>(
