@@ -79,7 +79,7 @@ function buildReportHTML(data: any): string {
 
   // ── Inline SVG: stacked daily volume bar chart ─────────────────────────
   const dailyChartSVG = (rows: any[], info: { year: number; month: number; monthEndDay: number }): string => {
-    const W = 720, H = 200, P = { l: 42, r: 12, t: 8, b: 32 };
+    const W = 1000, H = 180, P = { l: 42, r: 12, t: 8, b: 32 };
     const innerW = W - P.l - P.r;
     const innerH = H - P.t - P.b;
     const totalDays = info.monthEndDay;
@@ -748,7 +748,8 @@ function buildReportHTML(data: any): string {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
                color: #111827; background: #ffffff; -webkit-print-color-adjust: exact; }
-  .page { padding: 20px 32px; height: 210mm; overflow: hidden; position: relative; }
+  .page { padding: 20px 32px; min-height: 210mm; position: relative; }
+  .page.fixed { height: 210mm; overflow: hidden; }
 
   /* ── Header ─────────────────────────────────────────────────── */
   .hdr { display: flex; justify-content: space-between; align-items: flex-end;
@@ -887,7 +888,7 @@ function buildReportHTML(data: any): string {
 <body>
 
 <!-- ─────────────────────────── PAGE 1 — KPIs ─────────────────────────── -->
-<div class="page">
+<div class="page fixed">
 
   <div class="hdr">
     <div>
@@ -1103,82 +1104,21 @@ function buildReportHTML(data: any): string {
 
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
-    <span>Page 1 of 4 · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+    <span>Page 1 · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
   </div>
 </div>
 
-<!-- ─────────────── PAGE 2 — Yearly Volume Chart + Site Activity ─────────────── -->
-<div class="page">
+<!-- ─────────────── PAGE 2 — Top 20 Sites ─────────────── -->
+<div class="page fixed">
 
   <div class="pghdr">
-    <h2>${data.yearly?.year ?? ''} Volume Outlook</h2>
-    <span>Independent of report date filter · respects territory filter</span>
+    <h2>Top 20 Sites</h2>
+    <span>Sorted by vs stretch · ${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
   </div>
 
-  <div class="stitle">Daily Volume Trend
-    <small>${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(data.trendMonth?.month || 1) - 1]} ${data.trendMonth?.year || ''}${(() => {
-      const stats = dailyChartStats(data.trend || [], data.trendMonth || { monthEndDay: 30 });
-      return stats ? ` · ${stats}` : '';
-    })()}</small></div>
-  <div class="chart-card daily compact" style="margin-bottom:10px">
-    ${dailyChartSVG(data.trend || [], data.trendMonth || { year: new Date().getFullYear(), month: new Date().getMonth()+1, monthEndDay: 30 })}
-    ${dailyChartLegend(data.trend || [], data.trendMonth || { monthEndDay: 30 })}
-  </div>
-
-  <div class="stitle">${data.yearly?.year ?? ''} Volume — Actual vs Budget vs ${data.yearly?.priorYear ?? ''}</div>
-  <div class="chart-card yearly">
-    <div style="font-size:9px;color:#9ca3af;margin-bottom:4px">
-      Future months show budget &amp; prior‑year as reference (lighter fill). % above each bar = actual vs budget for that month.
-    </div>
-    ${yearlyVolumeBudgetSVG(data.yearly?.data || [], data.yearly?.year || 0, data.yearly?.priorYear || 0)}
-    ${yearlyChartLegend(data.yearly?.year || 0, data.yearly?.priorYear || 0)}
-  </div>
-
-  ${data.unmatched?.counts?.all > 0 ? `
-  <div class="stitle" style="margin-top:18px">⚠ Unmatched Submissions</div>
-  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px">
-    <div style="font-size:11px;color:#991b1b;font-weight:600;margin-bottom:6px">
-      ${data.unmatched.counts.distinctCodes} site code(s) · ${data.unmatched.counts.all} row(s) dropped because the SITE CODE wasn't in NAME INDEX.
-    </div>
-    <table style="width:100%;font-size:9px">
-      <thead><tr>
-        <th style="text-align:left;padding:4px 6px;color:#7f1d1d">Raw Code</th>
-        <th style="text-align:left;padding:4px 6px;color:#7f1d1d">Sheet</th>
-        <th style="text-align:right;padding:4px 6px;color:#7f1d1d">Rows</th>
-        <th style="text-align:left;padding:4px 6px;color:#7f1d1d">Last Seen</th>
-      </tr></thead>
-      <tbody>
-        ${(data.unmatched.data || []).slice(0, 8).map((u: any) => `
-          <tr>
-            <td style="padding:3px 6px;font-family:monospace;color:#dc2626;font-weight:600">${esc(u.rawSiteCode)}</td>
-            <td style="padding:3px 6px;color:#6b7280">${esc(u.sheet)}</td>
-            <td style="padding:3px 6px;text-align:right;color:#374151">${u.rowCount}</td>
-            <td style="padding:3px 6px;color:#9ca3af">${u.lastDate ? new Date(u.lastDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-  ` : ''}
-
-  <div class="ftr">
-    <span>Redan Sales Dashboard · Confidential</span>
-    <span>Page 2 of 4</span>
-  </div>
-</div>
-
-<!-- ─────────────────────── PAGE 3 — Territory + Top 10 ─────────────────────── -->
-<div class="page">
-
-  <div class="pghdr">
-    <h2>Territory &amp; Top Sites</h2>
-    <span>${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
-  </div>
-
-  <div class="stitle">Top 20 Sites <small>by vs stretch</small></div>
   <div class="tcard"><table>
     <thead><tr>
-      <th style="width:24px">#</th>
+      <th style="width:20px">#</th>
       <th>Site</th>
       <th>Territory</th>
       <th>MOSO</th>
@@ -1203,7 +1143,7 @@ function buildReportHTML(data: any): string {
   </table></div>
 
   ${comments && comments.length > 0 ? `
-    <div class="stitle" style="margin-top: 18px">Analyst Notes</div>
+    <div class="stitle" style="margin-top: 10px">Analyst Notes</div>
     ${comments.map((c: any) => `
       <div class="cmt">
         <div class="who"><strong>${esc(c.author)}</strong> · ${new Date(c.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}${c.ref_site_code ? ` · ${esc(c.ref_site_code)}` : ''}</div>
@@ -1214,12 +1154,70 @@ function buildReportHTML(data: any): string {
 
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
-    <span>Page 3 of 4</span>
+    <span>Page 2</span>
   </div>
 </div>
 
-<!-- ─────────────────────── PAGE 4 — Full Site Breakdown ─────────────────────── -->
-<div class="page">
+<!-- ─────────────── PAGE 3 — Charts ─────────────── -->
+<div class="page fixed">
+
+  <div class="pghdr">
+    <h2>${data.yearly?.year ?? ''} Volume Outlook</h2>
+    <span>Respects territory filter</span>
+  </div>
+
+  <div class="stitle">Daily Volume Trend
+    <small>${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(data.trendMonth?.month || 1) - 1]} ${data.trendMonth?.year || ''}${(() => {
+      const stats = dailyChartStats(data.trend || [], data.trendMonth || { monthEndDay: 30 });
+      return stats ? ` · ${stats}` : '';
+    })()}</small></div>
+  <div class="chart-card daily compact" style="margin-bottom:8px">
+    ${dailyChartSVG(data.trend || [], data.trendMonth || { year: new Date().getFullYear(), month: new Date().getMonth()+1, monthEndDay: 30 })}
+    ${dailyChartLegend(data.trend || [], data.trendMonth || { monthEndDay: 30 })}
+  </div>
+
+  <div class="stitle">${data.yearly?.year ?? ''} Volume — Actual vs Budget vs ${data.yearly?.priorYear ?? ''}</div>
+  <div class="chart-card yearly">
+    <div style="font-size:8px;color:#9ca3af;margin-bottom:3px">
+      Future months show budget &amp; prior‑year as reference (lighter fill). % above each bar = actual vs budget for that month.
+    </div>
+    ${yearlyVolumeBudgetSVG(data.yearly?.data || [], data.yearly?.year || 0, data.yearly?.priorYear || 0)}
+    ${yearlyChartLegend(data.yearly?.year || 0, data.yearly?.priorYear || 0)}
+  </div>
+
+  ${data.unmatched?.counts?.all > 0 ? `
+  <div class="stitle" style="margin-top:8px">Unmatched Submissions</div>
+  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:6px 10px">
+    <div style="font-size:9px;color:#991b1b;font-weight:600;margin-bottom:4px">
+      ${data.unmatched.counts.distinctCodes} site code(s) · ${data.unmatched.counts.all} row(s) dropped
+    </div>
+    <table style="width:100%;font-size:8px">
+      <thead><tr>
+        <th style="text-align:left;padding:2px 4px;color:#7f1d1d">Raw Code</th>
+        <th style="text-align:left;padding:2px 4px;color:#7f1d1d">Sheet</th>
+        <th style="text-align:right;padding:2px 4px;color:#7f1d1d">Rows</th>
+      </tr></thead>
+      <tbody>
+        ${(data.unmatched.data || []).slice(0, 6).map((u: any) => `
+          <tr>
+            <td style="padding:2px 4px;font-family:monospace;color:#dc2626;font-weight:600">${esc(u.rawSiteCode)}</td>
+            <td style="padding:2px 4px;color:#6b7280">${esc(u.sheet)}</td>
+            <td style="padding:2px 4px;text-align:right;color:#374151">${u.rowCount}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+  ` : ''}
+
+  <div class="ftr">
+    <span>Redan Sales Dashboard · Confidential</span>
+    <span>Page 3</span>
+  </div>
+</div>
+
+<!-- ─────────────────────── PAGE 4+ — Full Site Breakdown (multi-page) ─────────────────────── -->
+<div style="padding: 20px 32px;">
 
   <div class="pghdr">
     <h2>Full Site Breakdown</h2>
@@ -1282,9 +1280,9 @@ function buildReportHTML(data: any): string {
     </tbody>
   </table></div>
 
-  <div class="ftr">
+  <div class="ftr" style="padding:20px 32px 20px;">
     <span>Redan Sales Dashboard · Confidential</span>
-    <span>Page 4 of 4</span>
+    <span>Full Site Breakdown</span>
   </div>
 </div>
 
