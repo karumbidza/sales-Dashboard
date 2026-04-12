@@ -1283,7 +1283,8 @@ export async function POST(req: NextRequest) {
       || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
     const params = new URLSearchParams({ dateFrom, dateTo, ...(territory && { territory }), ...(product && { product }) });
     const cookie = req.headers.get('cookie') || '';
-    const fwd    = { headers: { cookie } };
+    const internalToken = process.env.INTERNAL_API_SECRET || '__internal_dashboard_bypass__';
+    const fwd    = { headers: { cookie, 'x-internal-token': internalToken } };
 
     // Daily sales trend for the current month of the report's `dateTo` —
     // independent of dateFrom so the chart always shows a full month.
