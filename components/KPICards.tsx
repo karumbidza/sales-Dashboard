@@ -353,27 +353,13 @@ export default function KPICards({ kpis }: { kpis: any }) {
       />
 
       {/* 7. Cash Ratio */}
-      {(() => {
-        const cur = mtd?.cashRatio != null ? mtd.cashRatio * 100 : null;
-        const prior = growth?.priorMtdCashRatio != null ? growth.priorMtdCashRatio * 100 : null;
-        const delta = cur != null && prior != null && prior > 0 ? cur - prior : null;
-        return (
-          <KPICard
-            icon={icons.cash}
-            label="Cash Ratio"
-            hint="Cash collected ÷ total revenue. Sub line shows non-cash split: coupons and cards."
-            value={cur != null ? `${cur.toFixed(1)}%` : '—'}
-            sub={<>
-              Coupon: {fmtVol(mtd?.couponVolume)} L · Card: {fmtVol(mtd?.cardVolume)} L
-              {delta != null && (
-                <span className={`ml-1 ${delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  · {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}pp vs prior
-                </span>
-              )}
-            </>}
-          />
-        );
-      })()}
+      <KPICard
+        icon={icons.cash}
+        label="Cash Ratio"
+        hint="Cash collected ÷ total revenue. Sub line shows non-cash split: coupons and cards."
+        value={mtd?.cashRatio != null ? `${(mtd.cashRatio * 100).toFixed(1)}%` : '—'}
+        sub={`Coupon: ${fmtVol(mtd?.couponVolume)} L · Card: ${fmtVol(mtd?.cardVolume)} L`}
+      />
 
       {/* 8. Petrotrade */}
       {(() => {
@@ -384,12 +370,14 @@ export default function KPICards({ kpis }: { kpis: any }) {
           <KPICard
             icon={icons.handshake}
             label="Petrotrade Vol"
+            badgeText={pctChange != null ? `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(1)}%` : undefined}
+            badgePct={pctChange != null ? (pctChange >= 0 ? 100 : 50) : undefined}
             value={<VolValue n={petrotrade?.mtdVolume} big />}
             sub={<>
               Margin: ${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}
-              {pctChange != null && (
-                <span className={`ml-1 ${pctChange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  · {pctChange >= 0 ? '▲' : '▼'} {Math.abs(pctChange).toFixed(1)}% vs prior
+              {prior > 0 && (
+                <span className="text-gray-400">
+                  {' '}· {fmtVol(prior)} L prior
                 </span>
               )}
             </>}

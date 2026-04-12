@@ -102,18 +102,11 @@ function ScoreCard({ t }: { t: Territory }) {
             {t.contributionPct != null && ` · ${t.contributionPct.toFixed(1)}% of total`}
           </p>
         </div>
-        <div className="text-right">
-          {t.growthPct != null && (
-            <span className={`text-[11px] font-semibold ${growthColor(t.growthPct)}`}>
-              {t.growthPct >= 0 ? '▲' : '▼'} {Math.abs(t.growthPct).toFixed(1)}%
-            </span>
-          )}
-          {t.vsBudgetPct != null && (
-            <p className={`text-[9px] font-medium ${t.vsBudgetPct >= 100 ? 'text-emerald-500' : 'text-gray-400'}`}>
-              vs budget {(t.vsBudgetPct - 100) >= 0 ? '+' : ''}{(t.vsBudgetPct - 100).toFixed(1)}%
-            </p>
-          )}
-        </div>
+        {t.growthPct != null && (
+          <span className={`text-[11px] font-semibold ${growthColor(t.growthPct)}`}>
+            {t.growthPct >= 0 ? '▲' : '▼'} {Math.abs(t.growthPct).toFixed(1)}%
+          </span>
+        )}
       </div>
 
       {/* Big volume */}
