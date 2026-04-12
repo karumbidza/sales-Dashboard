@@ -389,6 +389,8 @@ export default function UploadPanel({ onSuccess }: Props) {
       const orderedKeys = ['name_index', 'volume_budget', 'status_report', 'petrotrade', 'margin']
         .filter(k => selectedKeys.includes(k));
 
+      const CHUNK_SIZE = 2000; // rows per request to stay under 4.5MB
+
       for (const key of orderedKeys) {
         const sheetName = SHEET_KEY_TO_NAME[key];
         const sheet = parsed.compact[sheetName];
@@ -396,15 +398,19 @@ export default function UploadPanel({ onSuccess }: Props) {
 
         sheetCounts[key] = sheet.data.length;
 
-        const { data } = await postJSON('/api/ingest', {
-          action: 'sheet',
-          logId,
-          sheetKey: key,
-          sheetName,
-          sheet,
-          fileName: file.name,
-        });
-        if (data.error) throw new Error(data.error);
+        // Send in chunks to stay under Vercel's payload limit
+        for (let offset = 0; offset < sheet.data.length; offset += CHUNK_SIZE) {
+          const chunkData = sheet.data.slice(offset, offset + CHUNK_SIZE);
+          const { data } = await postJSON('/api/ingest', {
+            action: 'sheet',
+            logId,
+            sheetKey: key,
+            sheetName,
+            sheet: { columns: sheet.columns, data: chunkData },
+            fileName: file.name,
+          });
+          if (data.error) throw new Error(data.error);
+        }
       }
 
       // Step 3: Finish (reconciliation + view refresh)
