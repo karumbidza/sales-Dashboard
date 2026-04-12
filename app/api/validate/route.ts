@@ -43,20 +43,29 @@ interface Check {
 
 export async function POST(req: NextRequest) {
   try {
+    // Two accepted formats:
+    // 1. JSON with lightweight payload (allColumns, rowCounts, slimmed sheets)
+    // 2. FormData with file (legacy)
     let sheetNames: string[];
-    let sheets: Record<string, Record<string, any>[]>;
+    let allColumns: Record<string, string[]>;        // full column names per sheet
+    let sheetRowCounts: Record<string, number>;       // row counts per sheet
+    let sheets: Record<string, Record<string, any>[]>; // slimmed row data
     let fileName = 'upload.xlsx';
 
     const contentType = req.headers.get('content-type') || '';
 
     if (contentType.includes('application/json')) {
-      // Client-side parsed data (compact format)
       const body = await req.json();
       if (!body.sheets) return NextResponse.json({ error: 'No sheet data provided' }, { status: 400 });
-      ({ sheetNames, sheets } = compactToSheets(body.sheets));
+
+      sheetNames = body.sheetNames || [];
+      allColumns = body.allColumns || {};
+      sheetRowCounts = body.rowCounts || {};
       fileName = body.fileName || fileName;
+
+      // Convert compact sheets to objects (these are slimmed — only validation-relevant columns)
+      ({ sheets } = compactToSheets(body.sheets));
     } else {
-      // Legacy: file upload via FormData
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
       if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -69,13 +78,22 @@ export async function POST(req: NextRequest) {
       if (buffer.length < 4 || !XLSX_MAGIC.every((b, i) => buffer[i] === b))
         return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
 
-      ({ sheetNames, sheets } = parseExcelBuffer(buffer));
+      const parsed = parseExcelBuffer(buffer);
+      sheetNames = parsed.sheetNames;
+      sheets = parsed.sheets;
       fileName = file.name;
+
+      // For FormData mode, derive allColumns and rowCounts from full sheets
+      allColumns = {};
+      sheetRowCounts = {};
+      for (const [name, rows] of Object.entries(sheets)) {
+        sheetRowCounts[name] = rows.length;
+        allColumns[name] = rows.length > 0 ? Object.keys(rows[0]) : [];
+      }
     }
 
     const checks: Check[] = [];
     const summary = { errors: 0, warnings: 0, passed: 0 };
-    const sheetRowCounts: Record<string, number> = {};
 
     const addCheck = (id: string, sheet: string | null, title: string, status: Check['status'], detail: string) => {
       checks.push({ id, sheet, title, status, detail });
@@ -87,22 +105,20 @@ export async function POST(req: NextRequest) {
     // 1. Required sheets
     for (const name of REQUIRED_SHEETS) {
       if (sheetNames.includes(name)) {
-        const rows = sheets[name] || [];
-        sheetRowCounts[name] = rows.length;
-        const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+        const rowCount = sheetRowCounts[name] ?? 0;
+        const cols = allColumns[name] || [];
         addCheck('sheet_present', name, `Sheet "${name}" present`, 'pass',
-          `${rows.length} rows, ${cols.length} columns`);
+          `${rowCount} rows, ${cols.length} columns`);
       } else {
         addCheck('sheet_missing', name, `Sheet "${name}" present`, 'error',
           `Sheet not found. Found: ${sheetNames.join(', ')}`);
       }
     }
 
-    // 2. Required columns
+    // 2. Required columns (use allColumns — the full column list)
     for (const [sheetName, requiredCols] of Object.entries(REQUIRED_COLUMNS)) {
-      const rows = sheets[sheetName];
-      if (!rows || rows.length === 0) continue;
-      const cols = Object.keys(rows[0]);
+      const cols = allColumns[sheetName];
+      if (!cols || cols.length === 0) continue;
       const missing = requiredCols.filter(c => !cols.includes(c));
       if (missing.length > 0) {
         addCheck('cols_required', sheetName, `Required columns in "${sheetName}"`, 'error',
@@ -115,9 +131,8 @@ export async function POST(req: NextRequest) {
 
     // 3. Optional columns
     for (const [sheetName, warnCols] of Object.entries(WARN_COLUMNS)) {
-      const rows = sheets[sheetName];
-      if (!rows || rows.length === 0) continue;
-      const cols = Object.keys(rows[0]);
+      const cols = allColumns[sheetName];
+      if (!cols || cols.length === 0) continue;
       const missing = warnCols.filter(c => !cols.includes(c));
       if (missing.length > 0) {
         addCheck('cols_optional', sheetName, `Optional columns in "${sheetName}"`, 'warning',
@@ -130,9 +145,8 @@ export async function POST(req: NextRequest) {
 
     // 4. Min row counts
     for (const [sheetName, minRows] of Object.entries(MIN_ROW_COUNTS)) {
-      const rows = sheets[sheetName];
-      if (!rows) continue;
-      const n = rows.length;
+      const n = sheetRowCounts[sheetName] ?? 0;
+      if (!sheetNames.includes(sheetName)) continue;
       if (n < minRows) {
         addCheck('row_count', sheetName, `Row count "${sheetName}"`,
           n > 0 ? 'warning' : 'error', `${n} rows — expected at least ${minRows}`);
@@ -141,9 +155,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Date column parseable
+    // 5. Date column parseable (uses slimmed STATUS REPORT with Date column)
     let dateRange: { from: string; to: string } | null = null;
     const statusRows = sheets['STATUS REPORT'];
+    const statusRowCount = sheetRowCounts['STATUS REPORT'] ?? 0;
     if (statusRows && statusRows.length > 0) {
       let bad = 0;
       let minD: string | null = null;
@@ -156,11 +171,11 @@ export async function POST(req: NextRequest) {
       }
       if (bad > 0) {
         addCheck('date_parse', 'STATUS REPORT', 'Date column parseable',
-          bad < statusRows.length * 0.05 ? 'warning' : 'error',
-          `${bad} unparseable date values out of ${statusRows.length}`);
+          bad < statusRowCount * 0.05 ? 'warning' : 'error',
+          `${bad} unparseable date values out of ${statusRowCount}`);
       } else {
         addCheck('date_parse', 'STATUS REPORT', 'Date column parseable', 'pass',
-          `All ${statusRows.length.toLocaleString()} dates valid`);
+          `All ${statusRowCount.toLocaleString()} dates valid`);
       }
       if (minD && maxD) {
         dateRange = { from: minD, to: maxD };
@@ -263,11 +278,10 @@ export async function POST(req: NextRequest) {
         blank > 0 ? `${blank} rows with blank SITE CODE (will be skipped)` : 'No blank site codes');
     }
 
-    // 10. Budget months
-    const budgetRows = sheets['VOLUME BUDGET'];
-    if (budgetRows && budgetRows.length > 0) {
-      const cols = Object.keys(budgetRows[0]);
-      const monthCols = cols.filter(c => parseBudgetMonthCol(c) !== null);
+    // 10. Budget months (use allColumns for VOLUME BUDGET)
+    const budgetCols = allColumns['VOLUME BUDGET'];
+    if (budgetCols && budgetCols.length > 0) {
+      const monthCols = budgetCols.filter(c => parseBudgetMonthCol(c) !== null);
       if (monthCols.length > 0) {
         addCheck('budget_months', 'VOLUME BUDGET', 'Budget month columns', 'pass',
           `${monthCols.length} months detected: ${monthCols[0]} → ${monthCols[monthCols.length - 1]}`);

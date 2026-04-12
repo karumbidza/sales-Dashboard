@@ -526,7 +526,20 @@ async function refreshViews() {
   await query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_territory_monthly');
 }
 
+// ── Per-sheet ingestion helpers ───────────────────────────────────────────
+
+const INGEST_FN: Record<string, (rows: Record<string, any>[], src: string, logId: number | null) => Promise<any>> = {
+  name_index:    (rows, src) => ingestNameIndex(rows, src),
+  volume_budget: (rows, src) => ingestBudget(rows, src),
+  status_report: (rows, src, logId) => ingestStatusReport(rows, src, logId),
+  petrotrade:    (rows, src, logId) => ingestPetrotrade(rows, src, logId),
+  margin:        (rows, src, logId) => ingestMargin(rows, src, logId),
+};
+
 // ── Main POST handler ─────────────────────────────────────────────────────
+// Supports two modes:
+//  1. Per-sheet JSON protocol (action: start/sheet/finish) — used by client
+//  2. Legacy FormData with file — backward compatible
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
@@ -534,62 +547,121 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Too many requests — try again in a minute' }, { status: 429 });
   }
 
+  const contentType = req.headers.get('content-type') || '';
+
+  // ── Per-sheet JSON protocol ──────────────────────────────
+  if (contentType.includes('application/json')) {
+    const body = await req.json();
+    const action = body.action as string;
+
+    try {
+      // ACTION: start — create upload_log, return logId
+      if (action === 'start') {
+        const logRow = await query<any>(
+          `INSERT INTO upload_log (file_name, file_size_bytes, status) VALUES ($1, $2, 'pending') RETURNING id`,
+          [body.fileName || 'upload.xlsx', body.fileSize || 0]
+        );
+        return NextResponse.json({ logId: logRow[0]?.id ?? null });
+      }
+
+      // ACTION: sheet — ingest a single sheet
+      if (action === 'sheet') {
+        const { logId, sheetKey, sheetName, sheet, fileName } = body;
+        if (!sheet || !sheetKey) {
+          return NextResponse.json({ error: 'Missing sheet data or sheetKey' }, { status: 400 });
+        }
+
+        // Convert compact format to row objects
+        const rows = (sheet.data as any[][]).map((row: any[]) =>
+          Object.fromEntries((sheet.columns as string[]).map((col: string, i: number) => [col, row[i] ?? null]))
+        );
+
+        const fn = INGEST_FN[sheetKey];
+        if (!fn) return NextResponse.json({ error: `Unknown sheet key: ${sheetKey}` }, { status: 400 });
+
+        await fn(rows, fileName || 'upload.xlsx', logId ?? null);
+        return NextResponse.json({ ok: true, rows: rows.length });
+      }
+
+      // ACTION: finish — run post-ingestion, update log
+      if (action === 'finish') {
+        const { logId, period, rowCounts } = body;
+        const startMs = Date.now();
+
+        let periodMonth: string;
+        if (period && /^\d{4}-\d{2}-\d{2}$/.test(period)) {
+          const pd = new Date(period);
+          periodMonth = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}-01`;
+        } else {
+          const now = new Date();
+          periodMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        }
+
+        await buildReconciliation(periodMonth);
+        try { await refreshViews(); } catch (e) { console.warn('View refresh failed:', e); }
+
+        const durationMs = Date.now() - startMs;
+
+        if (logId) {
+          await query(
+            `UPDATE upload_log SET status='success', period_month=$1, row_counts=$2, duration_ms=$3 WHERE id=$4`,
+            [periodMonth, JSON.stringify(rowCounts || {}), durationMs, logId]
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          periodMonth,
+          rowCounts: rowCounts || {},
+          durationMs,
+        });
+      }
+
+      return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+
+    } catch (err: any) {
+      console.error('Ingest error:', err);
+      if (body.logId) {
+        await query(
+          `UPDATE upload_log SET status='failed', error_message=$1 WHERE id=$2`,
+          [String(err.message || 'Unknown error'), body.logId]
+        ).catch(() => {});
+      }
+      return NextResponse.json({ error: err.message || 'Ingestion failed' }, { status: 500 });
+    }
+  }
+
+  // ── Legacy FormData mode ─────────────────────────────────
   let logId: number | null = null;
   const startMs = Date.now();
 
   try {
-    let parsedSheets: Record<string, Record<string, any>[]>;
-    let fileName: string;
-    let fileSize: number;
-    let period: string;
-    let sheetsParam: string;
+    const formData = await req.formData();
+    const file = formData.get('file') as File | null;
+    const period = (formData.get('period') as string) || '';
+    const sheetsParam = (formData.get('sheets') as string) || '';
 
-    const contentType = req.headers.get('content-type') || '';
+    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls'))
+      return NextResponse.json({ error: 'Only Excel files (.xlsx) are accepted' }, { status: 400 });
+    if (file.size > 50 * 1024 * 1024)
+      return NextResponse.json({ error: 'File too large (max 50MB)' }, { status: 400 });
 
-    if (contentType.includes('application/json')) {
-      // Client-side parsed data (compact format)
-      const body = await req.json();
-      if (!body.sheets) return NextResponse.json({ error: 'No sheet data provided' }, { status: 400 });
-      ({ sheets: parsedSheets } = compactToSheets(body.sheets));
-      fileName = body.fileName || 'upload.xlsx';
-      fileSize = body.fileSize || 0;
-      period = body.period || '';
-      sheetsParam = body.selectedSheets || '';
-    } else {
-      // Legacy: file upload via FormData
-      const formData = await req.formData();
-      const file = formData.get('file') as File | null;
-      period = (formData.get('period') as string) || '';
-      sheetsParam = (formData.get('sheets') as string) || '';
-
-      if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-      if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls'))
-        return NextResponse.json({ error: 'Only Excel files (.xlsx) are accepted' }, { status: 400 });
-      if (file.size > 50 * 1024 * 1024)
-        return NextResponse.json({ error: 'File too large (max 50MB)' }, { status: 400 });
-
-      const buffer = Buffer.from(await file.arrayBuffer());
-      if (buffer.length < 4 || !XLSX_MAGIC.every((b, i) => buffer[i] === b))
-        return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
-
-      ({ sheets: parsedSheets } = parseExcelBuffer(buffer));
-      fileName = file.name;
-      fileSize = file.size;
-    }
+    const buffer = Buffer.from(await file.arrayBuffer());
+    if (buffer.length < 4 || !XLSX_MAGIC.every((b, i) => buffer[i] === b))
+      return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
 
     if (period && !/^\d{4}-\d{2}-\d{2}$/.test(period))
       return NextResponse.json({ error: 'Invalid period format — use YYYY-MM-DD' }, { status: 400 });
 
-    // Create upload_log entry
     const logRow = await query<any>(
       `INSERT INTO upload_log (file_name, file_size_bytes, status) VALUES ($1, $2, 'pending') RETURNING id`,
-      [fileName, fileSize]
+      [file.name, file.size]
     );
     logId = logRow[0]?.id ?? null;
 
-    const sheets = parsedSheets;
+    const { sheets } = parseExcelBuffer(buffer);
 
-    // Determine period month
     let periodMonth: string;
     if (period) {
       const pd = new Date(period);
@@ -602,43 +674,35 @@ export async function POST(req: NextRequest) {
     const selectedSheets = sheetsParam
       ? new Set(sheetsParam.split(',').map(s => s.trim()).filter(Boolean))
       : null;
-
     const wanted = (key: string) => selectedSheets === null || selectedSheets.has(key);
-    const sourceFile = fileName;
+    const sourceFile = file.name;
     const rowCounts: Record<string, number> = {};
 
-    // Ingest in dependency order
     if (wanted('name_index') && sheets['NAME INDEX']) {
-      const n = await ingestNameIndex(sheets['NAME INDEX'], sourceFile);
+      await ingestNameIndex(sheets['NAME INDEX'], sourceFile);
       rowCounts.name_index = sheets['NAME INDEX'].length;
     }
-
     if (wanted('volume_budget') && sheets['VOLUME BUDGET']) {
       await ingestBudget(sheets['VOLUME BUDGET'], sourceFile);
       rowCounts.volume_budget = sheets['VOLUME BUDGET'].length;
     }
-
     if (wanted('status_report') && sheets['STATUS REPORT']) {
       await ingestStatusReport(sheets['STATUS REPORT'], sourceFile, logId);
       rowCounts.status_report = sheets['STATUS REPORT'].length;
     }
-
     if (wanted('petrotrade') && sheets['PETROTRADE']) {
       await ingestPetrotrade(sheets['PETROTRADE'], sourceFile, logId);
       rowCounts.petrotrade = sheets['PETROTRADE'].length;
     }
-
     if (wanted('margin') && sheets['MARGIN']) {
       await ingestMargin(sheets['MARGIN'], sourceFile, logId);
       rowCounts.margin = sheets['MARGIN'].length;
     }
 
-    // Post-ingestion
     await buildReconciliation(periodMonth);
     try { await refreshViews(); } catch (e) { console.warn('View refresh failed:', e); }
 
     const durationMs = Date.now() - startMs;
-
     if (logId) {
       await query(
         `UPDATE upload_log SET status='success', period_month=$1, row_counts=$2, duration_ms=$3 WHERE id=$4`,
@@ -646,13 +710,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      fileName,
-      periodMonth,
-      rowCounts,
-      durationMs,
-    });
+    return NextResponse.json({ success: true, fileName: file.name, periodMonth, rowCounts, durationMs });
 
   } catch (err: any) {
     console.error('Ingest error:', err);

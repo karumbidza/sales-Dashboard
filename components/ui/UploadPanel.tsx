@@ -44,12 +44,14 @@ interface CompactSheet {
   data: any[][];
 }
 
-// ── Client-side Excel parsing ─────────────────────────────────────────────
-
-async function parseExcelClientSide(file: File): Promise<{
+interface ParsedExcel {
   sheetNames: string[];
   compact: Record<string, CompactSheet>;
-}> {
+}
+
+// ── Client-side Excel parsing ─────────────────────────────────────────────
+
+async function parseExcelClientSide(file: File): Promise<ParsedExcel> {
   const xlsxModule = await import('xlsx');
   const XLSX = xlsxModule.default ?? xlsxModule;
   const ab = await file.arrayBuffer();
@@ -74,6 +76,14 @@ async function parseExcelClientSide(file: File): Promise<{
   }
 
   return { sheetNames: wb.SheetNames, compact };
+}
+
+// Extract only specific columns from a compact sheet
+function sliceColumns(sheet: CompactSheet, wantedCols: string[]): CompactSheet {
+  const indices = wantedCols.map(c => sheet.columns.indexOf(c)).filter(i => i >= 0);
+  const columns = indices.map(i => sheet.columns[i]);
+  const data = sheet.data.map(row => indices.map(i => row[i]));
+  return { columns, data };
 }
 
 // Helper to POST JSON and safely parse response
@@ -120,6 +130,10 @@ const SHEET_KEY_TO_NAME: Record<string, string> = {
   volume_budget: 'VOLUME BUDGET',
 };
 
+const SHEET_NAME_TO_KEY: Record<string, string> = Object.fromEntries(
+  Object.entries(SHEET_KEY_TO_NAME).map(([k, v]) => [v, k])
+);
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 interface Props { onSuccess: () => void; }
@@ -128,7 +142,7 @@ type Phase = 'idle' | 'validating' | 'validated' | 'preflighting' | 'preflighted
 
 export default function UploadPanel({ onSuccess }: Props) {
   const [file, setFile]           = useState<File | null>(null);
-  const [parsed, setParsed]       = useState<{ sheetNames: string[]; compact: Record<string, CompactSheet> } | null>(null);
+  const [parsed, setParsed]       = useState<ParsedExcel | null>(null);
   const [parsing, setParsing]     = useState(false);
   const [period, setPeriod]       = useState('');
   const [sheets, setSheets]       = useState<Record<string, boolean>>({
@@ -172,6 +186,7 @@ export default function UploadPanel({ onSuccess }: Props) {
   };
 
   // ── Phase 1: Validate ─────────────────────────────────────
+  // Send only the columns the server needs for each check — NOT the full file.
 
   const handleValidate = async () => {
     if (!file || !parsed) return;
@@ -180,10 +195,34 @@ export default function UploadPanel({ onSuccess }: Props) {
     setErrorMsg('');
 
     try {
+      // Build lightweight payload: full column names + row counts + slimmed row data
+      const allColumns: Record<string, string[]> = {};
+      const rowCountsMap: Record<string, number> = {};
+      for (const [name, sheet] of Object.entries(parsed.compact)) {
+        allColumns[name] = sheet.columns;
+        rowCountsMap[name] = sheet.data.length;
+      }
+
+      // Only send the specific columns each validation check needs
+      const slimSheets: Record<string, CompactSheet> = {};
+      if (parsed.compact['NAME INDEX'])
+        slimSheets['NAME INDEX'] = sliceColumns(parsed.compact['NAME INDEX'], ['SITE CODE', 'BUDGET']);
+      if (parsed.compact['STATUS REPORT'])
+        slimSheets['STATUS REPORT'] = sliceColumns(parsed.compact['STATUS REPORT'], ['SITE CODE', 'Date']);
+      if (parsed.compact['PETROTRADE'])
+        slimSheets['PETROTRADE'] = sliceColumns(parsed.compact['PETROTRADE'], ['SITE CODE']);
+      if (parsed.compact['MARGIN'])
+        slimSheets['MARGIN'] = sliceColumns(parsed.compact['MARGIN'], ['SITE CODE']);
+      // VOLUME BUDGET: only column names needed, no row data
+      if (parsed.compact['VOLUME BUDGET'])
+        slimSheets['VOLUME BUDGET'] = { columns: parsed.compact['VOLUME BUDGET'].columns, data: [] };
+
       const { data } = await postJSON('/api/validate', {
         fileName: file.name,
         sheetNames: parsed.sheetNames,
-        sheets: parsed.compact,
+        allColumns,
+        rowCounts: rowCountsMap,
+        sheets: slimSheets,
       });
       setValidation({ checks: [], summary: { errors: 0, warnings: 0, passed: 0 }, sheetRowCounts: {}, dateRange: null, fileName: '', ok: false, canIngest: false, ...data });
       setPhase('validated');
@@ -194,6 +233,7 @@ export default function UploadPanel({ onSuccess }: Props) {
   };
 
   // ── Phase 1.5: Preflight (diff check) ─────────────────────
+  // Only needs STATUS REPORT with ~7 columns for the diff.
 
   const handlePreflight = async () => {
     if (!file || !parsed) return;
@@ -202,10 +242,20 @@ export default function UploadPanel({ onSuccess }: Props) {
     setErrorMsg('');
 
     try {
-      // Only send STATUS REPORT for preflight (that's all it uses)
-      const statusSheet = parsed.compact['STATUS REPORT'];
+      const srSheet = parsed.compact['STATUS REPORT'];
+      if (!srSheet) throw new Error('STATUS REPORT sheet not found');
+
+      // Only send the columns the preflight actually uses
+      const preflightCols = [
+        'SITE CODE', 'Date',
+        'DIESEL SALES (V)', 'BLEND SALES (V)', 'ULP_Sales_Qty',
+        'DIESEL SALES ($)', 'BLEND SALES ($)', 'ULP SALES ($)',
+        'FLEX BLEND (V)', 'FLEX DIESEL (V)', 'FLEX BLEND ($)', 'FLEX DIESL ($)',
+      ];
+      const slim = sliceColumns(srSheet, preflightCols);
+
       const { data } = await postJSON('/api/ingest/preflight', {
-        sheets: { 'STATUS REPORT': statusSheet },
+        sheets: { 'STATUS REPORT': slim },
       });
       setPreflight(data);
       if ((data.rowsExisting ?? 0) === 0) {
@@ -220,43 +270,66 @@ export default function UploadPanel({ onSuccess }: Props) {
   };
 
   // ── Phase 2: Ingest ───────────────────────────────────────
+  // Send one sheet at a time to stay under Vercel's 4.5MB limit.
 
   const handleIngest = async () => {
     if (!file || !parsed) return;
     setPhase('ingesting');
     const start = Date.now();
 
-    const selectedSheets = Object.entries(sheets).filter(([, v]) => v).map(([k]) => k);
+    const selectedKeys = Object.entries(sheets).filter(([, v]) => v).map(([k]) => k);
     const periodStr = period ? period + '-01' : '';
 
-    // Build compact sheets for only the selected sheets
-    const selectedCompact: Record<string, CompactSheet> = {};
-    for (const key of selectedSheets) {
-      const sheetName = SHEET_KEY_TO_NAME[key];
-      if (parsed.compact[sheetName]) {
-        selectedCompact[sheetName] = parsed.compact[sheetName];
-      }
-    }
-
     try {
-      const { data } = await postJSON('/api/ingest', {
+      // Step 1: Create upload_log
+      const { data: startData } = await postJSON('/api/ingest', {
+        action: 'start',
         fileName: file.name,
         fileSize: file.size,
-        period: periodStr,
-        selectedSheets: selectedSheets.join(','),
-        sheets: selectedCompact,
       });
+      const logId = startData.logId;
+
+      // Step 2: Send each sheet individually
+      const sheetCounts: Record<string, number> = {};
+
+      // Ingest in dependency order: name_index first, then volume_budget, then the rest
+      const orderedKeys = ['name_index', 'volume_budget', 'status_report', 'petrotrade', 'margin']
+        .filter(k => selectedKeys.includes(k));
+
+      for (const key of orderedKeys) {
+        const sheetName = SHEET_KEY_TO_NAME[key];
+        const sheet = parsed.compact[sheetName];
+        if (!sheet || sheet.data.length === 0) continue;
+
+        sheetCounts[key] = sheet.data.length;
+
+        const { data } = await postJSON('/api/ingest', {
+          action: 'sheet',
+          logId,
+          sheetKey: key,
+          sheetName,
+          sheet,
+          fileName: file.name,
+        });
+        if (data.error) throw new Error(data.error);
+      }
+
+      // Step 3: Finish (reconciliation + view refresh)
+      const { data: finishData } = await postJSON('/api/ingest', {
+        action: 'finish',
+        logId,
+        period: periodStr,
+        rowCounts: sheetCounts,
+      });
+
       setDuration(Date.now() - start);
 
-      if (data.success) {
-        setRowCounts(data.rowCounts || null);
-        setIngestLog(data.log || '');
+      if (finishData.success) {
+        setRowCounts(finishData.rowCounts || sheetCounts);
         setPhase('done');
         onSuccess();
       } else {
-        setErrorMsg(data.error || 'Ingestion failed');
-        setIngestLog(data.log || '');
-        setPhase('error');
+        throw new Error(finishData.error || 'Ingestion failed');
       }
     } catch (e: any) {
       setErrorMsg(e.message);
@@ -274,7 +347,6 @@ export default function UploadPanel({ onSuccess }: Props) {
     s === 'warning' ? 'bg-amber-50 border-l-2 border-amber-300' :
                       'bg-red-50 border-l-2 border-red-400';
 
-  // Group checks by sheet for display
   const grouped = (validation?.checks ?? []).reduce((acc, c) => {
     const key = c.sheet || 'File';
     if (!acc[key]) acc[key] = [];
@@ -353,13 +425,11 @@ export default function UploadPanel({ onSuccess }: Props) {
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Sheets to process</p>
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
+              <button type="button"
                 onClick={() => setSheets({ name_index: true, status_report: true, petrotrade: true, margin: true, volume_budget: true })}
                 className="text-[10px] text-blue-600 hover:text-blue-800">Select all</button>
               <span className="text-gray-300 text-[10px]">|</span>
-              <button
-                type="button"
+              <button type="button"
                 onClick={() => setSheets({ name_index: false, status_report: true, petrotrade: true, margin: false, volume_budget: false })}
                 className="text-[10px] text-blue-600 hover:text-blue-800">Daily only</button>
             </div>
@@ -378,12 +448,9 @@ export default function UploadPanel({ onSuccess }: Props) {
                   className={`flex items-start gap-2 px-2.5 py-1.5 rounded-md border cursor-pointer transition ${
                     on ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'
                   }`}>
-                  <input
-                    type="checkbox"
-                    checked={on}
+                  <input type="checkbox" checked={on}
                     onChange={e => setSheets(s => ({ ...s, [key]: e.target.checked }))}
-                    className="w-3 h-3 mt-0.5 flex-shrink-0 accent-[#1e3a5f]"
-                  />
+                    className="w-3 h-3 mt-0.5 flex-shrink-0 accent-[#1e3a5f]" />
                   <div className="min-w-0">
                     <p className={`text-[11px] font-semibold leading-tight ${on ? 'text-blue-800' : 'text-gray-600'}`}>{label}</p>
                     <p className="text-[9px] text-gray-400 leading-tight">{sub}</p>
@@ -453,7 +520,6 @@ export default function UploadPanel({ onSuccess }: Props) {
               <div className="flex justify-between"><span>Unchanged</span>
                 <span className="font-mono font-semibold text-gray-600">{preflight.unchangedRows.toLocaleString()}</span></div>
             </div>
-
             {preflight.sitesWithChanges.length > 0 && (
               <div className="mt-3">
                 <p className="text-[11px] font-semibold text-amber-900 uppercase tracking-wide mb-1">
@@ -465,7 +531,6 @@ export default function UploadPanel({ onSuccess }: Props) {
                 </p>
               </div>
             )}
-
             {preflight.sampleChanges.length > 0 && (
               <details className="mt-3">
                 <summary className="text-[11px] font-semibold text-amber-900 uppercase tracking-wide cursor-pointer">
@@ -482,18 +547,13 @@ export default function UploadPanel({ onSuccess }: Props) {
               </details>
             )}
           </div>
-
           <div className="flex gap-2">
             <button onClick={reset}
                     className="flex-1 h-9 bg-gray-100 hover:bg-gray-200 text-gray-700
-                               text-sm font-semibold rounded-lg transition">
-              Cancel
-            </button>
+                               text-sm font-semibold rounded-lg transition">Cancel</button>
             <button onClick={handleIngest}
                     className="flex-1 h-9 bg-emerald-600 hover:bg-emerald-700 text-white
-                               text-sm font-semibold rounded-lg transition">
-              Proceed with upload
-            </button>
+                               text-sm font-semibold rounded-lg transition">Proceed with upload</button>
           </div>
         </div>
       )}
@@ -508,16 +568,10 @@ export default function UploadPanel({ onSuccess }: Props) {
       {/* ── Validation Report ─────────────────────────────── */}
       {phase === 'validated' && validation && (
         <div className="space-y-3">
-
-          {/* Summary bar */}
           <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg border
-            ${validation.canIngest
-              ? 'bg-emerald-50 border-emerald-200'
-              : 'bg-red-50 border-red-200'}`}>
+            ${validation.canIngest ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
             <div className="flex items-center gap-2">
-              {validation.canIngest
-                ? <IconPass />
-                : <IconError />}
+              {validation.canIngest ? <IconPass /> : <IconError />}
               <span className={`text-sm font-semibold ${validation.canIngest ? 'text-emerald-700' : 'text-red-700'}`}>
                 {validation.canIngest ? 'Validation passed — ready to ingest' : 'Validation failed — fix errors before ingesting'}
               </span>
@@ -532,8 +586,6 @@ export default function UploadPanel({ onSuccess }: Props) {
               <span className="text-emerald-600 font-semibold">{validation.summary.passed} passed</span>
             </div>
           </div>
-
-          {/* Date range & sheet counts */}
           {(validation.dateRange || Object.keys(validation.sheetRowCounts).length > 0) && (
             <div className="bg-gray-50 rounded-lg px-4 py-3 grid grid-cols-2 gap-2">
               {validation.dateRange && (
@@ -552,8 +604,6 @@ export default function UploadPanel({ onSuccess }: Props) {
               ))}
             </div>
           )}
-
-          {/* Check list — only show non-pass items by default, all expandable */}
           {grouped && Object.entries(grouped).map(([sheet, sheetChecks]) => {
             const hasIssues = sheetChecks.some(c => c.status !== 'pass');
             if (!hasIssues) return null;
@@ -574,8 +624,6 @@ export default function UploadPanel({ onSuccess }: Props) {
               </div>
             );
           })}
-
-          {/* Check-for-changes button (preflight diff) */}
           {validation.canIngest && (
             <button onClick={handlePreflight}
                     className="w-full h-9 bg-[#1e3a5f] hover:bg-[#162d4a] text-white
@@ -583,7 +631,6 @@ export default function UploadPanel({ onSuccess }: Props) {
               Check for changes
             </button>
           )}
-
           {!validation.canIngest && (
             <button onClick={reset}
                     className="w-full h-9 bg-gray-100 hover:bg-gray-200 text-gray-600
