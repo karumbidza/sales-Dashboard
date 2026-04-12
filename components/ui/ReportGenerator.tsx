@@ -107,6 +107,11 @@ export default function ReportGenerator({ filters }: Props) {
 
       // Refresh report list
       fetch('/api/report').then(r => r.json()).then(d => setPastReports(d.data || []));
+    } catch (err: any) {
+      const msg = err.name === 'AbortError'
+        ? 'Report generation timed out (60s). Try a smaller date range or specific territory.'
+        : (err.message || 'Report generation failed');
+      alert(msg);
     } finally {
       setGenerating(false);
     }

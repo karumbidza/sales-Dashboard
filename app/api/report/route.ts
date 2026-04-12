@@ -1304,30 +1304,54 @@ export async function POST(req: NextRequest) {
 
     // Unmatched submissions panel — global state, no filters.
     // Fetch with a 30-second timeout to prevent hanging
-    const fetchWithTimeout = (url: string, opts: any, timeoutMs = 30_000) => {
+    const fetchWithTimeout = async (label: string, url: string, opts: any, timeoutMs = 30_000) => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      return fetch(url, { ...opts, signal: controller.signal })
-        .then(r => r.json())
-        .finally(() => clearTimeout(timer));
+      try {
+        const r = await fetch(url, { ...opts, signal: controller.signal });
+        clearTimeout(timer);
+        if (!r.ok) {
+          const text = await r.text().catch(() => '');
+          console.error(`Report sub-fetch ${label} failed: ${r.status} ${text.slice(0, 200)}`);
+          return { error: `${label} returned ${r.status}` };
+        }
+        return await r.json();
+      } catch (err: any) {
+        clearTimeout(timer);
+        const msg = err.name === 'AbortError' ? `${label} timed out after ${timeoutMs/1000}s` : `${label}: ${err.message}`;
+        console.error(`Report sub-fetch error: ${msg}`);
+        return { error: msg };
+      }
     };
 
+    console.log('Report: fetching data from', baseUrl);
+
     const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
-      fetchWithTimeout(`${baseUrl}/api/kpis?${params}`,             fwd),
-      fetchWithTimeout(`${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget`, fwd),
-      fetchWithTimeout(`${baseUrl}/api/territory-performance?${params}`, fwd),
-      fetchWithTimeout(`${baseUrl}/api/sales-trend?${trendParams}`, fwd),
-      fetchWithTimeout(`${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd).catch(() => null),
-      fetchWithTimeout(`${baseUrl}/api/unmatched-rows?pageSize=10`,  fwd).catch(() => null),
+      fetchWithTimeout('kpis',        `${baseUrl}/api/kpis?${params}`,             fwd),
+      fetchWithTimeout('topSites',    `${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget`, fwd),
+      fetchWithTimeout('territories', `${baseUrl}/api/territory-performance?${params}`, fwd),
+      fetchWithTimeout('trend',       `${baseUrl}/api/sales-trend?${trendParams}`, fwd),
+      fetchWithTimeout('yearly',      `${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd),
+      fetchWithTimeout('unmatched',   `${baseUrl}/api/unmatched-rows?pageSize=10`,  fwd),
     ]);
 
-    if (kpisRes?.error || topSitesRes?.error || territoriesRes?.error) {
-      console.error('Report data fetch failed:', { kpisRes, topSitesRes, territoriesRes });
+    const failedEndpoints = [
+      kpisRes?.error && `KPIs: ${kpisRes.error}`,
+      topSitesRes?.error && `Top Sites: ${topSitesRes.error}`,
+      territoriesRes?.error && `Territories: ${territoriesRes.error}`,
+      trendRes?.error && `Trend: ${trendRes.error}`,
+    ].filter(Boolean);
+
+    if (failedEndpoints.length > 0) {
+      console.error('Report data fetch failures:', failedEndpoints);
       return NextResponse.json({
-        error: 'Could not load report data — ' +
-               (kpisRes?.error || topSitesRes?.error || territoriesRes?.error),
+        error: 'Report data failed: ' + failedEndpoints.join('; '),
       }, { status: 500 });
     }
+
+    // Treat yearly and unmatched as optional
+    if (yearlyRes?.error) console.warn('Yearly data unavailable:', yearlyRes.error);
+    if (unmatchedRes?.error) console.warn('Unmatched data unavailable:', unmatchedRes.error);
 
     // Create report record
     const reportRow = await queryOne<any>(
