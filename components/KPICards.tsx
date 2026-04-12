@@ -279,7 +279,7 @@ export default function KPICards({ kpis }: { kpis: any }) {
             sub={budget?.daysInMonth
               ? `Budget: ${fmtVol(budget?.mtdBudget)} L (${budget?.daysElapsed}/${budget?.daysInMonth} days)`
               : `Budget: ${fmtVol(budget?.mtdBudget)} L`}
-            badgeText={momPct != null ? `${momPct >= 0 ? '+' : ''}${momPct.toFixed(1)}% MoM` : undefined}
+            badgeText={momPct != null ? `${momPct >= 0 ? '+' : ''}${momPct.toFixed(1)}%` : undefined}
             badgePct={momPct != null ? (momPct >= 0 ? 100 : 50) : undefined}
             highlight
             extra={projectionExtra}
@@ -387,13 +387,22 @@ export default function KPICards({ kpis }: { kpis: any }) {
       />
 
       {/* 7. Cash Ratio */}
-      <KPICard
-        icon={icons.cash}
-        label="Cash Ratio"
-        hint="Cash collected ÷ total revenue. Sub line shows non-cash split: coupons and cards."
-        value={mtd?.cashRatio != null ? `${(mtd.cashRatio * 100).toFixed(1)}%` : '—'}
-        sub={`Coupon: ${fmtVol(mtd?.couponVolume)} L · Card: ${fmtVol(mtd?.cardVolume)} L`}
-      />
+      {(() => {
+        const cur = mtd?.cashRatio != null ? mtd.cashRatio * 100 : null;
+        const prior = growth?.priorMtdCashRatio != null ? growth.priorMtdCashRatio * 100 : null;
+        const delta = cur != null && prior != null && prior > 0 ? cur - prior : null;
+        return (
+          <KPICard
+            icon={icons.cash}
+            label="Cash Ratio"
+            hint="Cash collected ÷ total revenue. Sub line shows non-cash split: coupons and cards."
+            badgeText={delta != null ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}pp` : undefined}
+            badgePct={delta != null ? (delta >= 0 ? 100 : 50) : undefined}
+            value={cur != null ? `${cur.toFixed(1)}%` : '—'}
+            sub={`Coupon: ${fmtVol(mtd?.couponVolume)} L · Card: ${fmtVol(mtd?.cardVolume)} L`}
+          />
+        );
+      })()}
 
       {/* 8. Petrotrade */}
       {(() => {
@@ -440,10 +449,14 @@ export default function KPICards({ kpis }: { kpis: any }) {
           <KPICard
             icon={icons.chart}
             label="YTD Volume"
-            badgeText={yoyPct != null ? `${yoyPct >= 0 ? '+' : ''}${yoyPct.toFixed(1)}% YoY` : undefined}
+            badgeText={yoyPct != null ? `${yoyPct >= 0 ? '+' : ''}${yoyPct.toFixed(1)}%` : undefined}
             badgePct={yoyPct != null ? (yoyPct >= 0 ? 100 : 50) : undefined}
             value={<VolValue n={ytd?.volume} big />}
-            sub={`${fmtVol(growth?.priorYtdVolume)} L prior year`}
+            sub={(() => {
+              const delta = siteDelta(ytd?.activeSites, growth?.priorYtdActiveSites);
+              const priorTxt = `${fmtVol(growth?.priorYtdVolume)} L prior year`;
+              return delta ? <>{delta} · {priorTxt}</> : priorTxt;
+            })()}
             growth={vsBudget != null ? vsBudget - 100 : null}
             growthLabel="vs budget"
           />
