@@ -15,7 +15,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Allow internal server-to-server API calls (e.g. report aggregation)
-  if (req.headers.get('x-internal-token') === INTERNAL_SECRET) {
+  if (req.cookies.get('__internal')?.value === INTERNAL_SECRET) {
     return NextResponse.next();
   }
 

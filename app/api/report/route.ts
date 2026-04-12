@@ -1284,7 +1284,7 @@ export async function POST(req: NextRequest) {
     const params = new URLSearchParams({ dateFrom, dateTo, ...(territory && { territory }), ...(product && { product }) });
     const cookie = req.headers.get('cookie') || '';
     const internalToken = process.env.INTERNAL_API_SECRET || '__internal_dashboard_bypass__';
-    const fwd    = { headers: { cookie, 'x-internal-token': internalToken } };
+    const fwd    = { headers: { cookie: `${cookie}; __internal=${internalToken}` } };
 
     // Daily sales trend for the current month of the report's `dateTo` —
     // independent of dateFrom so the chart always shows a full month.
