@@ -49,9 +49,13 @@ export default function ReportGenerator({ filters }: Props) {
   const generate = async () => {
     setGenerating(true);
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60_000); // 60s timeout
+
       const res = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           dateFrom:    filters.dateFrom,
           dateTo:      filters.dateTo,
@@ -61,6 +65,13 @@ export default function ReportGenerator({ filters }: Props) {
           reportName:  reportName || `Sales Report ${filters.dateFrom} → ${filters.dateTo}`,
         }),
       });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Report generation failed' }));
+        alert(err.error || `Report failed (${res.status})`);
+        return;
+      }
 
       const data = await res.json();
       if (data.html) {

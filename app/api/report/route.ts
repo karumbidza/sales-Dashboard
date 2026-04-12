@@ -1303,13 +1303,22 @@ export async function POST(req: NextRequest) {
     const yearlyParams = new URLSearchParams({ ...(territory && { territory }) });
 
     // Unmatched submissions panel — global state, no filters.
+    // Fetch with a 30-second timeout to prevent hanging
+    const fetchWithTimeout = (url: string, opts: any, timeoutMs = 30_000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(url, { ...opts, signal: controller.signal })
+        .then(r => r.json())
+        .finally(() => clearTimeout(timer));
+    };
+
     const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
-      fetch(`${baseUrl}/api/kpis?${params}`,             fwd).then(r => r.json()),
-      fetch(`${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget`, fwd).then(r => r.json()),
-      fetch(`${baseUrl}/api/territory-performance?${params}`, fwd).then(r => r.json()),
-      fetch(`${baseUrl}/api/sales-trend?${trendParams}`, fwd).then(r => r.json()),
-      fetch(`${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd).then(r => r.json()).catch(() => null),
-      fetch(`${baseUrl}/api/unmatched-rows?pageSize=10`,  fwd).then(r => r.json()).catch(() => null),
+      fetchWithTimeout(`${baseUrl}/api/kpis?${params}`,             fwd),
+      fetchWithTimeout(`${baseUrl}/api/top-sites?${params}&limit=20&sortBy=budget`, fwd),
+      fetchWithTimeout(`${baseUrl}/api/territory-performance?${params}`, fwd),
+      fetchWithTimeout(`${baseUrl}/api/sales-trend?${trendParams}`, fwd),
+      fetchWithTimeout(`${baseUrl}/api/yearly-volume-vs-budget?${yearlyParams}`, fwd).catch(() => null),
+      fetchWithTimeout(`${baseUrl}/api/unmatched-rows?pageSize=10`,  fwd).catch(() => null),
     ]);
 
     if (kpisRes?.error || topSitesRes?.error || territoriesRes?.error) {
