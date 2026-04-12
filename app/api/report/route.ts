@@ -182,7 +182,7 @@ function buildReportHTML(data: any): string {
       : '';
 
     return `
-      <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:200px">
+      <svg viewBox="0 0 ${W} ${H}" width="100%">
         ${ticks.join('')}
         ${budgetLine}
         ${stretchLine}
@@ -748,11 +748,11 @@ function buildReportHTML(data: any): string {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
                color: #111827; background: #ffffff; -webkit-print-color-adjust: exact; }
-  .page { padding: 28px 36px; }
+  .page { padding: 20px 32px; height: 210mm; overflow: hidden; position: relative; }
 
   /* ── Header ─────────────────────────────────────────────────── */
   .hdr { display: flex; justify-content: space-between; align-items: flex-end;
-         padding-bottom: 12px; margin-bottom: 20px; border-bottom: 2px solid #1e3a5f; }
+         padding-bottom: 8px; margin-bottom: 12px; border-bottom: 2px solid #1e3a5f; }
   .hdr h1 { font-size: 20px; font-weight: 700; color: #1e3a5f; letter-spacing: -0.2px; }
   .hdr .sub { font-size: 10px; color: #9ca3af; margin-top: 2px; }
   .hdr .meta { text-align: right; font-size: 9.5px; color: #6b7280; line-height: 1.55; }
@@ -762,9 +762,9 @@ function buildReportHTML(data: any): string {
            font-weight: 600; letter-spacing: 0.4px; }
 
   /* ── Section title ──────────────────────────────────────────── */
-  .stitle { font-size: 10px; font-weight: 700; color: #1e3a5f;
+  .stitle { font-size: 9px; font-weight: 700; color: #1e3a5f;
             text-transform: uppercase; letter-spacing: 1.1px;
-            margin: 18px 0 8px;
+            margin: 10px 0 6px;
             display: flex; align-items: center; gap: 8px; }
   .stitle::before { content: ''; display: inline-block;
                     width: 3px; height: 11px; background: #1e3a5f;
@@ -773,9 +773,9 @@ function buildReportHTML(data: any): string {
                   text-transform: none; font-size: 9px; }
 
   /* ── KPI tiles (match dashboard KPICards.tsx exactly) ────────── */
-  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .kpi  { position: relative; background: #ffffff; border: 1px solid #e5e7eb;
-          border-radius: 10px; padding: 10px 14px; overflow: hidden; }
+          border-radius: 8px; padding: 8px 10px; overflow: hidden; }
   .kpi.highlight { border-color: #c7d2fe; box-shadow: inset 0 0 0 1px #e0e7ff; }
   .kpi.highlight::after {
     content: ''; position: absolute; left: 0; right: 0; bottom: 0;
@@ -792,15 +792,15 @@ function buildReportHTML(data: any): string {
   .b-amber { background: #fef3c7; color: #92400e; }
   .b-red   { background: #fee2e2; color: #991b1b; }
   .b-gray  { background: #f3f4f6; color: #6b7280; }
-  .kpi-label { font-size: 11px; font-weight: 600; color: #6b7280;
+  .kpi-label { font-size: 9px; font-weight: 600; color: #6b7280;
                text-transform: uppercase; letter-spacing: 0.5px;
-               margin-bottom: 4px; }
-  .kpi-value { font-size: 18px; font-weight: 700; color: #111827;
+               margin-bottom: 2px; }
+  .kpi-value { font-size: 15px; font-weight: 700; color: #111827;
                line-height: 1.2; letter-spacing: -0.3px;
                font-variant-numeric: tabular-nums; }
-  .kpi-sub { font-size: 11px; color: #9ca3af; margin-top: 4px;
+  .kpi-sub { font-size: 9px; color: #9ca3af; margin-top: 2px;
              font-variant-numeric: tabular-nums; }
-  .kpi-growth { font-size: 11px; font-weight: 600; margin-top: 8px;
+  .kpi-growth { font-size: 9px; font-weight: 600; margin-top: 4px;
                 font-variant-numeric: tabular-nums; }
   .g-green { color: #16a34a; }
   .g-red   { color: #dc2626; }
@@ -812,13 +812,13 @@ function buildReportHTML(data: any): string {
            overflow: hidden; margin-bottom: 4px; }
   table { width: 100%; border-collapse: collapse; table-layout: auto; }
   thead tr { background: #f8fafc; }
-  th { color: #475569; font-size: 9px;
+  th { color: #475569; font-size: 8px;
        text-transform: uppercase; letter-spacing: 0.45px; font-weight: 700;
-       text-align: left; padding: 9px 10px;
+       text-align: left; padding: 5px 8px;
        border-bottom: 1.5px solid #e5e7eb;
        white-space: nowrap; }
   th.num { text-align: right; }
-  td { font-size: 10.5px; padding: 8px 10px;
+  td { font-size: 9.5px; padding: 4px 8px;
        border-bottom: 1px solid #f1f5f9;
        color: #111827; vertical-align: middle; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -828,9 +828,9 @@ function buildReportHTML(data: any): string {
   tbody tr:last-child td { border-bottom: none; }
   /* First column always emphasized (site / territory name) */
   td:first-child { font-weight: 600; color: #0f172a; }
-  .rnk { display: inline-block; width: 17px; height: 17px; border-radius: 50%;
-         background: #1e3a5f; color: #ffffff; font-size: 9px; font-weight: 700;
-         text-align: center; line-height: 17px; }
+  .rnk { display: inline-block; width: 15px; height: 15px; border-radius: 50%;
+         background: #1e3a5f; color: #ffffff; font-size: 8px; font-weight: 700;
+         text-align: center; line-height: 15px; }
 
   /* ── Comments ──────────────────────────────────────────────── */
   .cmt { border-left: 3px solid #1e3a5f; padding: 6px 10px; margin-bottom: 6px;
@@ -840,7 +840,7 @@ function buildReportHTML(data: any): string {
   .cmt .txt { font-size: 10px; color: #374151; }
 
   /* ── Footer ────────────────────────────────────────────────── */
-  .ftr { margin-top: 28px; padding-top: 10px; border-top: 1px solid #e5e7eb;
+  .ftr { margin-top: auto; padding-top: 8px; border-top: 1px solid #e5e7eb;
          display: flex; justify-content: space-between;
          font-size: 8.5px; color: #9ca3af; }
 
@@ -848,7 +848,7 @@ function buildReportHTML(data: any): string {
   .page { page-break-after: always; }
   .page:last-child { page-break-after: auto; }
   .pghdr { display: flex; justify-content: space-between; align-items: baseline;
-           margin-bottom: 14px; padding-bottom: 8px;
+           margin-bottom: 8px; padding-bottom: 6px;
            border-bottom: 2px solid #1e3a5f; }
   .pghdr h2 { font-size: 15px; font-weight: 700; color: #1e3a5f;
               letter-spacing: -0.2px; }
@@ -1098,7 +1098,7 @@ function buildReportHTML(data: any): string {
 
   </div>
 
-  <div class="stitle" style="margin-top:14px">Territory Scorecard <small>sorted by volume</small></div>
+  <div class="stitle" style="margin-top:8px">Territory Scorecard <small>sorted by volume</small></div>
   ${territoryScorecardHTML(territories || [])}
 
   <div class="ftr">
