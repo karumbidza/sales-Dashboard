@@ -269,25 +269,53 @@ export default function KPICards({ kpis }: { kpis: any }) {
       />
 
       {/* 2. MTD Volume */}
-      <KPICard
-        icon={icons.barrel}
-        label="MTD Volume"
-        value={<VolValue n={mtd?.volume} big />}
-        sub={budget?.daysInMonth
-          ? `Budget: ${fmtVol(budget?.mtdBudget)} L (${budget?.daysElapsed}/${budget?.daysInMonth} days)`
-          : `Budget: ${fmtVol(budget?.mtdBudget)} L`}
-        badgePct={budget?.vsBudgetPct}
-        highlight
-        extra={projectionExtra}
-      />
+      {(() => {
+        const momPct = growth?.mtdGrowthPct;
+        return (
+          <KPICard
+            icon={icons.barrel}
+            label="MTD Volume"
+            value={<VolValue n={mtd?.volume} big />}
+            sub={budget?.daysInMonth
+              ? `Budget: ${fmtVol(budget?.mtdBudget)} L (${budget?.daysElapsed}/${budget?.daysInMonth} days)`
+              : `Budget: ${fmtVol(budget?.mtdBudget)} L`}
+            badgeText={momPct != null ? `${momPct >= 0 ? '+' : ''}${momPct.toFixed(1)}% MoM` : undefined}
+            badgePct={momPct != null ? (momPct >= 0 ? 100 : 50) : undefined}
+            highlight
+            extra={projectionExtra}
+          />
+        );
+      })()}
 
       {/* 3. Average Daily Sales */}
-      <KPICard
-        icon={icons.lightning}
-        label="Avg Daily Sales"
-        value={<VolValue n={mtd?.avgDaily} big />}
-        sub={`${mtd?.tradingDays ?? 0} days · ${mtd?.activeSites ?? 0} sites`}
-      />
+      {(() => {
+        const dailyBudget = budget?.mtdBudget && budget?.daysElapsed
+          ? budget.mtdBudget / budget.daysElapsed : null;
+        const aboveBudget = dailyBudget != null && mtd?.avgDaily != null && mtd.avgDaily >= dailyBudget;
+        const tradingDays = mtd?.tradingDays ?? 0;
+        const dieselDaily = tradingDays > 0 && mtd?.dieselVolume ? Math.round(mtd.dieselVolume / tradingDays) : null;
+        const blendDaily = tradingDays > 0 && mtd?.blendVolume ? Math.round(mtd.blendVolume / tradingDays) : null;
+        const ulpDaily = tradingDays > 0 && mtd?.ulpVolume ? Math.round(mtd.ulpVolume / tradingDays) : null;
+        return (
+          <KPICard
+            icon={icons.lightning}
+            label="Avg Daily Sales"
+            value={
+              <span style={{ color: aboveBudget ? '#16a34a' : undefined }}>
+                <VolValue n={mtd?.avgDaily} big />
+              </span>
+            }
+            sub={<>
+              {dieselDaily != null && `D: ${fmtVol(dieselDaily)}`}
+              {blendDaily != null && ` · B: ${fmtVol(blendDaily)}`}
+              {ulpDaily != null && ` · U: ${fmtVol(ulpDaily)}`}
+              {dailyBudget != null && (
+                <span className="text-gray-400"> · Bdgt: {fmtVol(Math.round(dailyBudget))}</span>
+              )}
+            </>}
+          />
+        );
+      })()}
 
       {/* 4. Vs Stretch + Vs Budget (dual stat) */}
       {(() => {
@@ -323,21 +351,27 @@ export default function KPICards({ kpis }: { kpis: any }) {
       })()}
 
       {/* 5. MoM Growth */}
-      <KPICard
-        icon={icons.trending}
-        label="MoM Growth"
-        hint="Month-on-month volume change vs the same elapsed window last month, anchored on the report's selected end date."
-        value={growth?.mtdGrowthPct != null
-          ? `${growth.mtdGrowthPct >= 0 ? '+' : ''}${fmtPct(growth.mtdGrowthPct)}`
-          : '—'}
-        sub={(() => {
-          const delta = siteDelta(mtd?.activeSites, growth?.priorMtdActiveSites);
-          const priorTxt = `${fmtVol(growth?.priorMtdVolume)} L last month`;
-          return delta ? <>{delta} · {priorTxt}</> : priorTxt;
-        })()}
-        growth={growth?.mtdGrowthPct}
-        growthLabel="vs prior month"
-      />
+      {(() => {
+        const pct = growth?.mtdGrowthPct;
+        const color = pct == null ? undefined : pct >= 0 ? '#16a34a' : '#dc2626';
+        return (
+          <KPICard
+            icon={icons.trending}
+            label="MoM Growth"
+            hint="Month-on-month volume change vs the same elapsed window last month."
+            value={
+              <span style={{ color }}>
+                {pct != null ? `${pct >= 0 ? '+' : ''}${fmtPct(pct)}` : '—'}
+              </span>
+            }
+            sub={(() => {
+              const delta = siteDelta(mtd?.activeSites, growth?.priorMtdActiveSites);
+              const priorTxt = `${fmtVol(growth?.priorMtdVolume)} L last month`;
+              return delta ? <>{delta} · {priorTxt}</> : priorTxt;
+            })()}
+          />
+        );
+      })()}
 
       {/* 6. Avg Margin */}
       <KPICard
@@ -373,14 +407,7 @@ export default function KPICards({ kpis }: { kpis: any }) {
             badgeText={pctChange != null ? `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(1)}%` : undefined}
             badgePct={pctChange != null ? (pctChange >= 0 ? 100 : 50) : undefined}
             value={<VolValue n={petrotrade?.mtdVolume} big />}
-            sub={<>
-              Margin: ${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}
-              {prior > 0 && (
-                <span className="text-gray-400">
-                  {' '}· {fmtVol(prior)} L prior
-                </span>
-              )}
-            </>}
+            sub={`Margin: $${(petrotrade?.mtdMargin || 0).toLocaleString('en', { maximumFractionDigits: 0 })}`}
           />
         );
       })()}
@@ -397,28 +424,31 @@ export default function KPICards({ kpis }: { kpis: any }) {
             icon={icons.dollar}
             label="Redan Flexi Volume"
             hint="Flexi blend + flexi diesel volume for the selected period."
+            badgeText={flexGrowth != null ? `${flexGrowth >= 0 ? '+' : ''}${flexGrowth.toFixed(1)}%` : undefined}
+            badgePct={flexGrowth != null ? (flexGrowth >= 0 ? 100 : 50) : undefined}
             value={<VolValue n={cy} big />}
             sub={py != null ? `${fmtVol(py)} L last month` : 'Flexi blend + flexi diesel'}
-            growth={flexGrowth}
-            growthLabel="vs prior month"
           />
         );
       })()}
 
       {/* 10. YTD Volume */}
-      <KPICard
-        icon={icons.chart}
-        label="YTD Volume"
-        value={<VolValue n={ytd?.volume} big />}
-        sub={(() => {
-          const delta = siteDelta(ytd?.activeSites, growth?.priorYtdActiveSites);
-          const priorTxt = `${fmtVol(growth?.priorYtdVolume)} L last year`;
-          return delta ? <>{delta} · {priorTxt}</> : priorTxt;
-        })()}
-        badgePct={ytd?.vsBudgetPct}
-        growth={growth?.ytdGrowthPct}
-        growthLabel="vs prior year"
-      />
+      {(() => {
+        const yoyPct = growth?.ytdGrowthPct;
+        const vsBudget = ytd?.vsBudgetPct;
+        return (
+          <KPICard
+            icon={icons.chart}
+            label="YTD Volume"
+            badgeText={yoyPct != null ? `${yoyPct >= 0 ? '+' : ''}${yoyPct.toFixed(1)}% YoY` : undefined}
+            badgePct={yoyPct != null ? (yoyPct >= 0 ? 100 : 50) : undefined}
+            value={<VolValue n={ytd?.volume} big />}
+            sub={`${fmtVol(growth?.priorYtdVolume)} L prior year`}
+            growth={vsBudget != null ? vsBudget - 100 : null}
+            growthLabel="vs budget"
+          />
+        );
+      })()}
 
     </div>
   );

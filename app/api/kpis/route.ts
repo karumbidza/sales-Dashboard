@@ -66,6 +66,9 @@ export async function GET(req: NextRequest) {
           THEN SUM(COALESCE(s.cash_sale_value,0)) / SUM(${revExpr})
           ELSE 0 END                   AS cash_ratio,
         COALESCE(SUM(s.flex_blend_volume + s.flex_diesel_volume), 0) AS flex_volume,
+        COALESCE(SUM(COALESCE(s.diesel_sales_volume,0) + COALESCE(s.flex_diesel_volume,0)), 0) AS diesel_volume,
+        COALESCE(SUM(COALESCE(s.blend_sales_volume,0) + COALESCE(s.flex_blend_volume,0)), 0) AS blend_volume,
+        COALESCE(SUM(COALESCE(s.ulp_sales_volume,0)), 0) AS ulp_volume,
         COALESCE(SUM(
           COALESCE(s.diesel_coupon_qty, 0) + COALESCE(s.blend_coupon_qty, 0) + COALESCE(s.ulp_coupon_qty, 0)
         ), 0)                                                          AS coupon_volume,
@@ -368,6 +371,9 @@ export async function GET(req: NextRequest) {
         tradingDays:  parseInt(mtdRow?.trading_days || 0),
         cashRatio:    round4(parseFloat(mtdRow?.cash_ratio || 0)),
         flexVolume:   round2(parseFloat(mtdRow?.flex_volume   || 0)),
+        dieselVolume: round2(parseFloat(mtdRow?.diesel_volume || 0)),
+        blendVolume:  round2(parseFloat(mtdRow?.blend_volume  || 0)),
+        ulpVolume:    round2(parseFloat(mtdRow?.ulp_volume    || 0)),
         couponVolume: round2(parseFloat(mtdRow?.coupon_volume || 0)),
         cardVolume:   round2(parseFloat(mtdRow?.card_volume   || 0)),
       },
