@@ -79,12 +79,12 @@ function buildReportHTML(data: any): string {
 
   // ── Inline SVG: stacked daily volume bar chart ─────────────────────────
   const dailyChartSVG = (rows: any[], info: { year: number; month: number; monthEndDay: number }): string => {
-    const W = 720, H = 240, P = { l: 42, r: 12, t: 8, b: 32 };
+    const W = 720, H = 200, P = { l: 42, r: 12, t: 8, b: 32 };
     const innerW = W - P.l - P.r;
     const innerH = H - P.t - P.b;
     if (!rows || rows.length === 0) {
-      return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
-        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No data for this month</text>
+      return `<svg viewBox="0 0 ${W} ${H}" width="100%">
+        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No daily data</text>
       </svg>`;
     }
 
@@ -93,32 +93,32 @@ function buildReportHTML(data: any): string {
     const dailyRate      = info.monthEndDay > 0 ? monthlyBudget  / info.monthEndDay : 0;
     const dailyStretch   = info.monthEndDay > 0 ? monthlyStretch / info.monthEndDay : 0;
 
-    // Map by day-of-month so days without data still get a slot
-    const byDay: Record<number, any> = {};
-    let maxDayWithData = 0;
+    // Use actual dates from data (respects report date filter)
+    const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dataPoints: { date: string; volume: number; label: string; wd: string }[] = [];
     for (const r of rows) {
-      const d = parseInt(String(r.date || r.period || '').slice(8, 10), 10);
-      if (Number.isFinite(d)) {
-        byDay[d] = r;
-        if (Number(r?.actual_volume || 0) > 0 && d > maxDayWithData) maxDayWithData = d;
-      }
+      const dateStr = String(r.date || r.period || '').slice(0, 10);
+      if (!dateStr || dateStr.length < 10) continue;
+      const vol = Number(r?.actual_volume || 0);
+      const dt = new Date(dateStr + 'T00:00:00');
+      const day = dt.getDate();
+      const mon = MONTHS[dt.getMonth()];
+      dataPoints.push({ date: dateStr, volume: vol, label: `${day} ${mon}`, wd: WEEKDAYS[dt.getDay()] });
+    }
+    if (dataPoints.length === 0) {
+      return `<svg viewBox="0 0 ${W} ${H}" width="100%">
+        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No daily data</text>
+      </svg>`;
     }
 
-    // Only render through the last day that actually has data — otherwise the
-    // bars cluster on the left and 70% of the chart is empty white space.
-    // Falls back to the full month if for some reason no day has data yet.
-    const lastDay = maxDayWithData > 0 ? maxDayWithData : info.monthEndDay;
-
-    const totals = Array.from({ length: lastDay }, (_, i) => {
-      const r = byDay[i + 1];
-      return Number(r?.actual_volume || 0);
-    });
+    const nDays = dataPoints.length;
+    const totals = dataPoints.map(d => d.volume);
     const yMax = Math.max(...totals, dailyRate, dailyStretch) * 1.12 || 1;
-    const xStep = innerW / lastDay;
-    const barW  = Math.max(4, xStep * 0.7);
+    const xStep = innerW / nDays;
     const yScale = (v: number) => P.t + innerH - (v / yMax) * innerH;
 
-    // Y-axis ticks (4)
+    // Y-axis ticks
     const ticks: string[] = [];
     for (let i = 0; i <= 4; i++) {
       const v = (yMax * i) / 4;
@@ -132,43 +132,33 @@ function buildReportHTML(data: any): string {
       `);
     }
 
-    // Line chart only — total volume per day with weekday labels
-    const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const dots: string[] = [];
     const xLbls: string[] = [];
     const linePoints: string[] = [];
-    for (let day = 1; day <= lastDay; day++) {
-      const r = byDay[day];
-      const cx = P.l + xStep * (day - 0.5);
+    const labelStep = nDays <= 16 ? 1 : nDays <= 31 ? 2 : 3;
 
-      const total = Number(r?.actual_volume || 0);
-      const cy = yScale(total);
+    for (let i = 0; i < nDays; i++) {
+      const dp = dataPoints[i];
+      const cx = P.l + xStep * (i + 0.5);
+      const cy = yScale(dp.volume);
       linePoints.push(`${cx},${cy}`);
 
-      // Dot — colour by met budget/stretch
-      if (total > 0) {
-        const metStretch = dailyRate > 0 && total >= dailyRate * 1.10;
-        const metBudget  = dailyRate > 0 && total >= dailyRate;
+      if (dp.volume > 0) {
+        const metStretch = dailyRate > 0 && dp.volume >= dailyRate * 1.10;
+        const metBudget  = dailyRate > 0 && dp.volume >= dailyRate;
         const fill   = metStretch ? '#16a34a' : metBudget ? '#84cc16' : '#ffffff';
         const stroke = metStretch || metBudget ? '#ffffff' : '#6366f1';
         const radius = metStretch ? 4 : metBudget ? 3.5 : 2.8;
         dots.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/>`);
       }
 
-      // X labels: show weekday + day for every day. Two-line label.
-      const dt = new Date(info.year, info.month - 1, day);
-      const wd = WEEKDAYS[dt.getDay()];
-      const labelStep = lastDay <= 16 ? 1 : 2;
-      if (day === 1 || day % labelStep === 0 || day === lastDay) {
-        xLbls.push(`<text x="${cx}" y="${H - 14}" text-anchor="middle" font-size="8" font-weight="600" fill="#374151">${wd}</text>`);
-        xLbls.push(`<text x="${cx}" y="${H - 4}"  text-anchor="middle" font-size="8" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
+      if (i === 0 || (i + 1) % labelStep === 0 || i === nDays - 1) {
+        xLbls.push(`<text x="${cx}" y="${H - 14}" text-anchor="middle" font-size="7.5" font-weight="600" fill="#374151">${dp.wd}</text>`);
+        xLbls.push(`<text x="${cx}" y="${H - 4}"  text-anchor="middle" font-size="7.5" fill="#6b7280">${dp.label}</text>`);
       }
     }
 
-    // Total line connecting daily points
     const linePts = linePoints.join(' ');
-
-    // Daily budget + stretch reference lines
     const budgetLine = dailyRate > 0 ? `
       <line x1="${P.l}" x2="${W - P.r}" y1="${yScale(dailyRate)}" y2="${yScale(dailyRate)}"
             stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="5 4"/>
@@ -179,7 +169,7 @@ function buildReportHTML(data: any): string {
     ` : '';
 
     return `
-      <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:200px">
         ${ticks.join('')}
         <polyline points="${linePts}" fill="none" stroke="#6366f1" stroke-width="2.2"/>
         ${budgetLine}
@@ -240,7 +230,13 @@ function buildReportHTML(data: any): string {
       if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}K`;
       return Math.round(v).toLocaleString('en');
     };
-    const sorted = [...terrs].sort((a, b) => (Number(b.volume) || 0) - (Number(a.volume) || 0));
+    // Only show key territories in the report
+  const REPORT_TERRITORIES = ['brendon', 'tendai', 'saliya'];
+  const filtered = terrs.filter(t => {
+    const name = String(t.territoryName || t.territoryCode || '').toLowerCase();
+    return REPORT_TERRITORIES.some(rt => name.includes(rt));
+  });
+  const sorted = [...(filtered.length > 0 ? filtered : terrs)].sort((a, b) => (Number(b.volume) || 0) - (Number(a.volume) || 0));
     const shortName = (t: any) =>
       String(t.territoryName || t.territoryCode || '?').replace(/'s Territory$/i, '').replace(/\sTerritory$/i, '');
     const varColor = (pct: number | null | undefined) =>
@@ -918,22 +914,37 @@ function buildReportHTML(data: any): string {
              ${proj.isNextMonth ? `<span style="font-size:8px;background:#f3f4f6;color:#6b7280;padding:1px 5px;border-radius:3px;margin-left:4px;text-transform:uppercase;letter-spacing:0.4px">Next month</span>` : ''}
            </p>`
         : '';
+      const momPct = kpis.growth?.mtdGrowthPct;
+      const momBadge = momPct != null
+        ? `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:${momPct >= 0 ? '#dcfce7' : '#fef2f2'};color:${momPct >= 0 ? '#16a34a' : '#dc2626'}">${momPct >= 0 ? '+' : ''}${momPct.toFixed(1)}%</span>`
+        : '';
       return tile({
         icon:  'barrel',
         label: 'MTD Volume',
         value: `${fmtVol(kpis.mtd?.volume)} L`,
         sub:   `Budget: ${fmtVol(kpis.budget?.mtdBudget)} L (${kpis.budget?.daysElapsed ?? '—'}/${kpis.budget?.daysInMonth ?? '—'} days)${projLine}`,
-        badgePct: kpis.budget?.vsBudgetPct,
+        badgeHtml: momBadge,
         highlight: true,
       });
     })()}
 
-    ${/* 3. Average Daily Sales */ tile({
-      icon:  'lightning',
-      label: 'Avg Daily Sales',
-      value: `${fmtVol(kpis.mtd?.avgDaily)} L`,
-      sub:   `${kpis.mtd?.tradingDays ?? 0} days · ${kpis.mtd?.activeSites ?? 0} sites`,
-    })}
+    ${/* 3. Average Daily Sales */ (() => {
+      const dailyBudget = kpis.budget?.mtdBudget && kpis.budget?.daysElapsed
+        ? kpis.budget.mtdBudget / kpis.budget.daysElapsed : null;
+      const aboveBudget = dailyBudget != null && kpis.mtd?.avgDaily != null && kpis.mtd.avgDaily >= dailyBudget;
+      const td = kpis.mtd?.tradingDays ?? 0;
+      const dD = td > 0 && kpis.mtd?.dieselVolume ? Math.round(kpis.mtd.dieselVolume / td) : null;
+      const dB = td > 0 && kpis.mtd?.blendVolume ? Math.round(kpis.mtd.blendVolume / td) : null;
+      const dU = td > 0 && kpis.mtd?.ulpVolume ? Math.round(kpis.mtd.ulpVolume / td) : null;
+      const split = [dD != null ? `D: ${fmtVol(dD)}` : '', dB != null ? `B: ${fmtVol(dB)}` : '', dU != null ? `U: ${fmtVol(dU)}` : ''].filter(Boolean).join(' · ');
+      const bdgt = dailyBudget != null ? ` · Bdgt: ${fmtVol(Math.round(dailyBudget))}` : '';
+      return tile({
+        icon:  'lightning',
+        label: 'Avg Daily Sales',
+        value: `<span style="color:${aboveBudget ? '#16a34a' : '#111827'}">${fmtVol(kpis.mtd?.avgDaily)} L</span>`,
+        sub:   `${split}${bdgt}`,
+      });
+    })()}
 
     ${/* 4. Vs Stretch + Vs Budget (dual stat) */ (() => {
       const vsS = kpis.budget?.vsStretchPct;
@@ -973,15 +984,13 @@ function buildReportHTML(data: any): string {
         ? `<span style="color:${deltaColor};font-weight:600">${deltaSign}${Math.abs(d)} site${Math.abs(d) === 1 ? '' : 's'}</span>`
         : '';
       const sub = d != null ? `${deltaHtml} · ${priorTxt}` : priorTxt;
+      const pct = kpis.growth?.mtdGrowthPct;
+      const valColor = pct == null ? '#374151' : pct >= 0 ? '#16a34a' : '#dc2626';
       return tile({
         icon:  'trending',
         label: 'MoM Growth',
-        value: kpis.growth?.mtdGrowthPct != null
-                ? `${kpis.growth.mtdGrowthPct >= 0 ? '+' : ''}${kpis.growth.mtdGrowthPct.toFixed(1)}%`
-                : '—',
+        value: `<span style="color:${valColor}">${pct != null ? `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%` : '—'}</span>`,
         sub,
-        growth: kpis.growth?.mtdGrowthPct ?? null,
-        growthLabel: 'vs prior month',
       });
     })()}
 
@@ -996,14 +1005,21 @@ function buildReportHTML(data: any): string {
               : 'Net gross margin',
     })}
 
-    ${/* 7. Cash Ratio */ tile({
-      icon:  'cash',
-      label: 'Cash Ratio',
-      value: kpis.mtd?.cashRatio != null
-              ? `${(kpis.mtd.cashRatio * 100).toFixed(1)}%`
-              : '—',
-      sub:   `Coupon: ${fmtVol(kpis.mtd?.couponVolume)} L · Card: ${fmtVol(kpis.mtd?.cardVolume)} L`,
-    })}
+    ${/* 7. Cash Ratio */ (() => {
+      const cur = kpis.mtd?.cashRatio != null ? kpis.mtd.cashRatio * 100 : null;
+      const prior = kpis.growth?.priorMtdCashRatio != null ? kpis.growth.priorMtdCashRatio * 100 : null;
+      const delta = cur != null && prior != null && prior > 0 ? cur - prior : null;
+      const crBadge = delta != null
+        ? `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:${delta >= 0 ? '#dcfce7' : '#fef2f2'};color:${delta >= 0 ? '#16a34a' : '#dc2626'}">${delta >= 0 ? '+' : ''}${delta.toFixed(1)}pp</span>`
+        : '';
+      return tile({
+        icon:  'cash',
+        label: 'Cash Ratio',
+        value: cur != null ? `${cur.toFixed(1)}%` : '—',
+        sub:   `Coupon: ${fmtVol(kpis.mtd?.couponVolume)} L · Card: ${fmtVol(kpis.mtd?.cardVolume)} L`,
+        badgeHtml: crBadge,
+      });
+    })()}
 
     ${/* 8. Petrotrade */ (() => {
       const cur = kpis.petrotrade?.mtdVolume ?? 0;
@@ -1012,12 +1028,11 @@ function buildReportHTML(data: any): string {
       const badgeHtml = pct != null
         ? `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:${pct >= 0 ? '#dcfce7' : '#fef2f2'};color:${pct >= 0 ? '#16a34a' : '#dc2626'}">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span>`
         : '';
-      const priorSub = prior > 0 ? ` · ${fmtVol(prior)} L prior` : '';
       return tile({
         icon:  'handshake',
         label: 'Petrotrade Vol',
         value: `${fmtVol(cur)} <span style="font-size:10px;font-weight:500;color:#9ca3af">L</span>`,
-        sub:   `Margin: ${fmtRev(kpis.petrotrade?.mtdMargin)}${priorSub}`,
+        sub:   `Margin: ${fmtRev(kpis.petrotrade?.mtdMargin)}`,
         badgeHtml,
       });
     })()}
@@ -1028,13 +1043,15 @@ function buildReportHTML(data: any): string {
       const flexGrowth = (cy != null && py != null && py > 0)
         ? ((cy - py) / py) * 100
         : null;
+      const flexBadge = flexGrowth != null
+        ? `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:${flexGrowth >= 0 ? '#dcfce7' : '#fef2f2'};color:${flexGrowth >= 0 ? '#16a34a' : '#dc2626'}">${flexGrowth >= 0 ? '+' : ''}${flexGrowth.toFixed(1)}%</span>`
+        : '';
       return tile({
         icon:  'dollar',
         label: 'Redan Flexi Volume',
         value: `${fmtVol(cy)} L`,
         sub:   py != null ? `${fmtVol(py)} L last month` : 'Flexi blend + flexi diesel',
-        growth: flexGrowth,
-        growthLabel: 'vs prior month',
+        badgeHtml: flexBadge,
       });
     })()}
 
@@ -1042,21 +1059,26 @@ function buildReportHTML(data: any): string {
       const cy  = kpis.ytd?.activeSites;
       const py  = kpis.growth?.priorYtdActiveSites;
       const d   = (cy != null && py != null) ? cy - py : null;
-      const priorTxt = `${fmtVol(kpis.growth?.priorYtdVolume)} L last year`;
+      const priorTxt = `${fmtVol(kpis.growth?.priorYtdVolume)} L prior year`;
       const deltaColor = d == null || d === 0 ? '#6b7280' : d > 0 ? '#16a34a' : '#dc2626';
       const deltaSign  = d == null || d === 0 ? '±' : d > 0 ? '+' : '−';
       const deltaHtml  = d != null
         ? `<span style="color:${deltaColor};font-weight:600">${deltaSign}${Math.abs(d)} site${Math.abs(d) === 1 ? '' : 's'}</span>`
         : '';
       const sub = d != null ? `${deltaHtml} · ${priorTxt}` : priorTxt;
+      const yoyPct = kpis.growth?.ytdGrowthPct;
+      const yoyBadge = yoyPct != null
+        ? `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:${yoyPct >= 0 ? '#dcfce7' : '#fef2f2'};color:${yoyPct >= 0 ? '#16a34a' : '#dc2626'}">${yoyPct >= 0 ? '+' : ''}${yoyPct.toFixed(1)}%</span>`
+        : '';
+      const vsBudget = kpis.ytd?.vsBudgetPct;
       return tile({
         icon:  'chart',
         label: 'YTD Volume',
         value: `${fmtVol(kpis.ytd?.volume)} L`,
         sub,
-        badgePct: kpis.ytd?.vsBudgetPct,
-        growth:   kpis.growth?.ytdGrowthPct ?? null,
-        growthLabel: 'vs prior year',
+        badgeHtml: yoyBadge,
+        growth: vsBudget != null ? vsBudget - 100 : null,
+        growthLabel: 'vs budget',
       });
     })()}
 
@@ -1139,7 +1161,7 @@ function buildReportHTML(data: any): string {
     <span>${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
   </div>
 
-  <div class="stitle">Top 20 Sites <small>by budget</small></div>
+  <div class="stitle">Top 20 Sites <small>by vs stretch</small></div>
   <div class="tcard"><table>
     <thead><tr>
       <th style="width:24px">#</th>
@@ -1148,24 +1170,20 @@ function buildReportHTML(data: any): string {
       <th>MOSO</th>
       <th class="num">Volume (L)</th>
       <th class="num">Avg Daily</th>
-      <th class="num">Budget (L)</th>
       <th class="num">Vs Budget</th>
       <th class="num">Vs Stretch</th>
-      <th class="num">Share</th>
     </tr></thead>
     <tbody>
-      ${(topSites || []).map((s: any) => `
+      ${(topSites || []).sort((a: any, b: any) => (b.vsStretchPct ?? 0) - (a.vsStretchPct ?? 0)).map((s: any, i: number) => `
         <tr>
-          <td><span class="rnk">${s.rank}</span></td>
+          <td><span class="rnk">${i + 1}</span></td>
           <td><strong>${esc(s.siteName)}</strong></td>
           <td class="muted">${esc(s.territoryName) || '—'}</td>
           <td class="muted">${esc(s.moso) || '—'}</td>
           <td class="num">${fmtVol(s.volume)}</td>
           <td class="num muted">${fmtVol(s.avgDaily)}</td>
-          <td class="num muted">${fmtVol(s.budgetVolume)}</td>
           <td class="num" style="color:${varColor(s.vsBudgetPct)};font-weight:600">${fmtVar(s.vsBudgetPct)}</td>
           <td class="num" style="color:${varColor(s.vsStretchPct)}">${fmtVar(s.vsStretchPct)}</td>
-          <td class="num muted">${s.contributionPct != null ? s.contributionPct.toFixed(1) + '%' : '—'}</td>
         </tr>`).join('')}
     </tbody>
   </table></div>
@@ -1306,7 +1324,7 @@ export async function POST(req: NextRequest) {
     const monthEndDay = new Date(refYear, refMonth, 0).getDate();
     const monthEnd    = `${refYear}-${String(refMonth).padStart(2,'0')}-${String(monthEndDay).padStart(2,'0')}`;
     const trendParams = new URLSearchParams({
-      dateFrom: monthStart, dateTo: monthEnd, granularity: 'daily',
+      dateFrom, dateTo, granularity: 'daily',
       ...(territory && { territory }), ...(product && { product }),
     });
     const yearlyParams = new URLSearchParams({ ...(territory && { territory }) });
