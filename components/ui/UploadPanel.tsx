@@ -55,25 +55,45 @@ async function parseExcelClientSide(file: File): Promise<ParsedExcel> {
   const xlsxModule = await import('xlsx');
   const XLSX = xlsxModule.default ?? xlsxModule;
   const ab = await file.arrayBuffer();
-  const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+  // Read WITHOUT cellDates — dates come as Excel serial numbers which we
+  // convert ourselves to avoid SheetJS timezone bugs (dates off by 1 day).
+  const wb = XLSX.read(ab, { type: 'array', cellDates: false });
   const compact: Record<string, CompactSheet> = {};
+
+  // Excel serial number → YYYY-MM-DD (Excel epoch = 1899-12-30)
+  const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
+  const excelSerialToISO = (serial: number): string => {
+    const ms = EXCEL_EPOCH + serial * 86400000;
+    const d = new Date(ms);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  };
 
   for (const name of wb.SheetNames) {
     const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
     if (rows.length === 0) {
       compact[name] = { columns: [], data: [] };
     } else {
+      // Detect which columns are date-formatted in the sheet
+      const ws = wb.Sheets[name];
+      const dateColSet = new Set<string>();
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const headerCell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+        const dataCell = ws[XLSX.utils.encode_cell({ r: range.s.r + 1, c })];
+        if (dataCell && dataCell.t === 'n' && dataCell.z && /[dmy]/i.test(dataCell.z)) {
+          const colName = headerCell?.v != null ? String(headerCell.v) : '';
+          if (colName) dateColSet.add(colName);
+        }
+      }
+
       const columns = Object.keys(rows[0]);
       compact[name] = {
         columns,
         data: rows.map(row => columns.map(col => {
           const v = row[col];
-          if (v instanceof Date) {
-            // Format as local YYYY-MM-DD — toISOString() shifts to UTC and loses a day
-            const y = v.getFullYear();
-            const m = String(v.getMonth() + 1).padStart(2, '0');
-            const d = String(v.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
+          // Convert Excel date serial numbers to YYYY-MM-DD strings
+          if (dateColSet.has(col) && typeof v === 'number' && v > 30000 && v < 100000) {
+            return excelSerialToISO(v);
           }
           return v;
         })),

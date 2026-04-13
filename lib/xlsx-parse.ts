@@ -45,11 +45,43 @@ export interface ParsedSheets {
   sheets: Record<string, Record<string, any>[]>;
 }
 
+// Excel serial number → YYYY-MM-DD (Excel epoch = 1899-12-30)
+const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
+function excelSerialToISO(serial: number): string {
+  const ms = EXCEL_EPOCH + serial * 86400000;
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
 export function parseExcelBuffer(buffer: Buffer | ArrayBuffer): ParsedSheets {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+  // Read WITHOUT cellDates to avoid SheetJS timezone bugs (dates off by 1 day)
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   const sheets: Record<string, Record<string, any>[]> = {};
   for (const name of wb.SheetNames) {
-    sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
+    // Detect date-formatted columns
+    const ws = wb.Sheets[name];
+    const dateColSet = new Set<string>();
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const headerCell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+      const dataCell = ws[XLSX.utils.encode_cell({ r: range.s.r + 1, c })];
+      if (dataCell && dataCell.t === 'n' && dataCell.z && /[dmy]/i.test(dataCell.z)) {
+        const colName = headerCell?.v != null ? String(headerCell.v) : '';
+        if (colName) dateColSet.add(colName);
+      }
+    }
+
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: null });
+    // Convert date serial numbers to YYYY-MM-DD strings
+    for (const row of rows) {
+      for (const col of Array.from(dateColSet)) {
+        const v = row[col];
+        if (typeof v === 'number' && v > 30000 && v < 100000) {
+          row[col] = excelSerialToISO(v);
+        }
+      }
+    }
+    sheets[name] = rows;
   }
   return { sheetNames: wb.SheetNames, sheets };
 }
