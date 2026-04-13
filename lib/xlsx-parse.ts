@@ -65,10 +65,13 @@ export function parseExcelBuffer(buffer: Buffer | ArrayBuffer): ParsedSheets {
     for (let c = range.s.c; c <= range.e.c; c++) {
       const headerCell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
       const dataCell = ws[XLSX.utils.encode_cell({ r: range.s.r + 1, c })];
-      if (dataCell && dataCell.t === 'n' && dataCell.z && /[dmy]/i.test(dataCell.z)) {
-        const colName = headerCell?.v != null ? String(headerCell.v) : '';
-        if (colName) dateColSet.add(colName);
-      }
+      const colName = headerCell?.v != null ? String(headerCell.v) : '';
+      if (!colName || !dataCell || dataCell.t !== 'n') continue;
+      // Detect date columns by: format string, display text, or column name
+      const isDate = (dataCell.z && /[dmy]/i.test(dataCell.z))
+        || (dataCell.w && /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(dataCell.w))
+        || /^date$/i.test(colName.trim());
+      if (isDate) dateColSet.add(colName);
     }
 
     const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: null });
