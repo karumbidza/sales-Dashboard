@@ -1126,7 +1126,7 @@ function buildReportHTML(data: any): string {
 </div>
 
 <!-- ─────────────── PAGE 2 — Top 20 Sites ─────────────── -->
-<div class="page">
+<div class="page" style="page-break-after:auto">
 
   <div class="pghdr">
     <h2>Top 20 Sites</h2>
