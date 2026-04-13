@@ -118,16 +118,15 @@ function buildReportHTML(data: any): string {
       return `<svg viewBox="0 0 800 200" width="100%"><text x="400" y="100" text-anchor="middle" font-size="11" fill="#9ca3af">No data</text></svg>`;
     }
 
-    // Chart dimensions — scale width to number of data points
+    // Fixed viewBox width to match A4 landscape — prevents aspect-ratio blowup
     const nSlots = dataPoints.length;
-    const slotW = 38; // px per day slot (like Recharts bar spacing)
-    const W = Math.max(800, 56 + nSlots * slotW + 20);
-    const H = 234;
-    const P = { l: 56, r: 20, t: 10, b: 44 };
+    const W = 1100;
+    const H = 230;
+    const P = { l: 52, r: 16, t: 10, b: 40 };
     const innerW = W - P.l - P.r;
     const innerH = H - P.t - P.b;
     const xStep = innerW / nSlots;
-    const barW = Math.max(8, xStep * 0.55);
+    const barW = Math.min(Math.max(8, xStep * 0.55), 40);
 
     const allTotals = dataPoints.map(d => d.total);
     const yMax = Math.max(...allTotals, dailyRate, dailyStretch) * 1.15 || 1;
@@ -188,7 +187,7 @@ function buildReportHTML(data: any): string {
       : '';
 
     return `
-      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox="0 0 ${W} ${H}" width="100%">
         ${grid.join('')}
         ${elems.filter(e => e.startsWith('<rect')).join('')}
         ${budgetLine}
