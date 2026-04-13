@@ -54,37 +54,10 @@ function excelSerialToISO(serial: number): string {
 }
 
 export function parseExcelBuffer(buffer: Buffer | ArrayBuffer): ParsedSheets {
-  // Read WITHOUT cellDates to avoid SheetJS timezone bugs (dates off by 1 day)
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   const sheets: Record<string, Record<string, any>[]> = {};
   for (const name of wb.SheetNames) {
-    // Detect date-formatted columns
-    const ws = wb.Sheets[name];
-    const dateColSet = new Set<string>();
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const headerCell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
-      const dataCell = ws[XLSX.utils.encode_cell({ r: range.s.r + 1, c })];
-      const colName = headerCell?.v != null ? String(headerCell.v) : '';
-      if (!colName || !dataCell || dataCell.t !== 'n') continue;
-      // Detect date columns by: format string, display text, or column name
-      const isDate = (dataCell.z && /[dmy]/i.test(dataCell.z))
-        || (dataCell.w && /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(dataCell.w))
-        || /^date$/i.test(colName.trim());
-      if (isDate) dateColSet.add(colName);
-    }
-
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: null });
-    // Convert date serial numbers to YYYY-MM-DD strings
-    for (const row of rows) {
-      for (const col of Array.from(dateColSet)) {
-        const v = row[col];
-        if (typeof v === 'number' && v > 30000 && v < 100000) {
-          row[col] = excelSerialToISO(v);
-        }
-      }
-    }
-    sheets[name] = rows;
+    sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
   }
   return { sheetNames: wb.SheetNames, sheets };
 }
@@ -113,14 +86,16 @@ function localISO(d: Date): string {
 
 export function parseDate(val: any): string | null {
   if (val == null) return null;
+  // Excel serial number (cellDates: false) — e.g. 46113 = 2026-04-01
+  if (typeof val === 'number' && val > 25000 && val < 100000) {
+    return excelSerialToISO(val);
+  }
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
     return localISO(val);
   }
   const s = String(val).trim();
-  // If already YYYY-MM-DD, return as-is (no Date conversion needed)
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // If ISO string with time, extract the date part
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
@@ -129,12 +104,15 @@ export function parseDate(val: any): string | null {
 
 export function parseDateDayFirst(val: any): string | null {
   if (val == null) return null;
+  // Excel serial number
+  if (typeof val === 'number' && val > 25000 && val < 100000) {
+    return excelSerialToISO(val);
+  }
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
     return localISO(val);
   }
   const s = String(val).trim();
-  // If already YYYY-MM-DD, return as-is
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
   // Try DD/MM/YYYY or DD-MM-YYYY

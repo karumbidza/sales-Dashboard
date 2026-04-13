@@ -55,8 +55,9 @@ async function parseExcelClientSide(file: File): Promise<ParsedExcel> {
   const xlsxModule = await import('xlsx');
   const XLSX = xlsxModule.default ?? xlsxModule;
   const ab = await file.arrayBuffer();
-  // Read WITHOUT cellDates — dates come as Excel serial numbers which we
-  // convert ourselves to avoid SheetJS timezone bugs (dates off by 1 day).
+  // Read WITHOUT cellDates — dates stay as Excel serial numbers.
+  // The server's parseDate() handles serial→YYYY-MM-DD conversion.
+  // We also convert on the client for validation/preflight display.
   const wb = XLSX.read(ab, { type: 'array', cellDates: false });
   const compact: Record<string, CompactSheet> = {};
 
@@ -73,28 +74,34 @@ async function parseExcelClientSide(file: File): Promise<ParsedExcel> {
     if (rows.length === 0) {
       compact[name] = { columns: [], data: [] };
     } else {
-      // Detect which columns are date-formatted in the sheet
+      // Detect date columns: check if column name contains 'date' or first
+      // data value looks like an Excel serial with a date-like display string
       const ws = wb.Sheets[name];
-      const dateColSet = new Set<string>();
+      const columns = Object.keys(rows[0]);
+      const dateCols = new Set<number>();
       const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const headerCell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
-        const dataCell = ws[XLSX.utils.encode_cell({ r: range.s.r + 1, c })];
-        const colName = headerCell?.v != null ? String(headerCell.v) : '';
-        if (!colName || !dataCell || dataCell.t !== 'n') continue;
-        const isDate = (dataCell.z && /[dmy]/i.test(dataCell.z))
-          || (dataCell.w && /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(dataCell.w))
-          || /^date$/i.test(colName.trim());
-        if (isDate) dateColSet.add(colName);
+      for (let ci = 0; ci < columns.length; ci++) {
+        const colName = columns[ci];
+        // Column name heuristic
+        if (/date/i.test(colName)) { dateCols.add(ci); continue; }
+        // Check first data cell's display text for date pattern
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const hdr = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+          if (hdr?.v != null && String(hdr.v) === colName) {
+            const cell = ws[XLSX.utils.encode_cell({ r: range.s.r + 1, c })];
+            if (cell?.t === 'n' && cell?.w && /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(cell.w)) {
+              dateCols.add(ci);
+            }
+            break;
+          }
+        }
       }
 
-      const columns = Object.keys(rows[0]);
       compact[name] = {
         columns,
-        data: rows.map(row => columns.map(col => {
+        data: rows.map(row => columns.map((col, ci) => {
           const v = row[col];
-          // Convert Excel date serial numbers to YYYY-MM-DD strings
-          if (dateColSet.has(col) && typeof v === 'number' && v > 30000 && v < 100000) {
+          if (dateCols.has(ci) && typeof v === 'number' && v > 25000 && v < 100000) {
             return excelSerialToISO(v);
           }
           return v;
