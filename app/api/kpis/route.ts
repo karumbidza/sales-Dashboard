@@ -20,10 +20,10 @@ export async function GET(req: NextRequest) {
     const revExpr = revenueExpr(filters.product);
 
     // ── Reference dates ─────────────────────────────────────────────────────
-    const today = filters.dateTo ? new Date(filters.dateTo) : new Date();
-    const isoToday = today.toISOString().split('T')[0];
-    const currentYear  = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
+    // Parse date strings directly to avoid timezone shifting from new Date()
+    const isoToday = filters.dateTo || new Date().toISOString().split('T')[0];
+    const [currentYear, currentMonth, _todayDay] = isoToday.split('-').map(Number);
+    const today = { getDate: () => _todayDay, getFullYear: () => currentYear, getMonth: () => currentMonth - 1 };
     const mtdFrom  = `${currentYear}-${String(currentMonth).padStart(2,'0')}-01`;
     const ytdFrom  = `${currentYear}-01-01`;
     const priorMtdFrom = currentMonth === 1
@@ -287,9 +287,9 @@ export async function GET(req: NextRequest) {
     const daysRemainingNum = daysInMonthNum - daysElapsedNum;
     const isLastDay = daysRemainingNum === 0;
 
-    const ninetyAgo = new Date(today);
+    const ninetyAgo = new Date(currentYear, currentMonth - 1, _todayDay);
     ninetyAgo.setDate(ninetyAgo.getDate() - 90);
-    const ninetyFrom = ninetyAgo.toISOString().split('T')[0];
+    const ninetyFrom = `${ninetyAgo.getFullYear()}-${String(ninetyAgo.getMonth() + 1).padStart(2, '0')}-${String(ninetyAgo.getDate()).padStart(2, '0')}`;
 
     const dailyFilters = buildSalesFilters({ ...filters, dateFrom: ninetyFrom, dateTo: isoToday });
     const dailyRows = await query<any>(`
