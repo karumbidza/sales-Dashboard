@@ -257,7 +257,7 @@ function buildReportHTML(data: any): string {
       return Math.round(v).toLocaleString('en');
     };
     // Only show key territories in the report
-  const REPORT_TERRITORIES = ['brendon', 'tendai', 'saliya'];
+  const REPORT_TERRITORIES = ['brendon', 'tendai', 'saliya', 'tafara'];
   const filtered = terrs.filter(t => {
     const name = String(t.territoryName || t.territoryCode || '').toLowerCase();
     return REPORT_TERRITORIES.some(rt => name.includes(rt));
