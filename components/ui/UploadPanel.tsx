@@ -55,54 +55,25 @@ async function parseExcelClientSide(file: File): Promise<ParsedExcel> {
   const xlsxModule = await import('xlsx');
   const XLSX = xlsxModule.default ?? xlsxModule;
   const ab = await file.arrayBuffer();
-  // Read WITHOUT cellDates — dates stay as Excel serial numbers.
-  // The server's parseDate() handles serial→YYYY-MM-DD conversion.
-  // We also convert on the client for validation/preflight display.
-  const wb = XLSX.read(ab, { type: 'array', cellDates: false });
+  // cellDates: true so SheetJS converts date serials to Date objects.
+  // We then adjust +4h to fix the ~2h-before-midnight UTC offset.
+  const wb = XLSX.read(ab, { type: 'array', cellDates: true });
   const compact: Record<string, CompactSheet> = {};
-
-  // Excel serial number → YYYY-MM-DD (Excel epoch = 1899-12-30)
-  const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
-  const excelSerialToISO = (serial: number): string => {
-    const ms = EXCEL_EPOCH + serial * 86400000;
-    const d = new Date(ms);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-  };
 
   for (const name of wb.SheetNames) {
     const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
     if (rows.length === 0) {
       compact[name] = { columns: [], data: [] };
     } else {
-      // Detect date columns: check if column name contains 'date' or first
-      // data value looks like an Excel serial with a date-like display string
-      const ws = wb.Sheets[name];
       const columns = Object.keys(rows[0]);
-      const dateCols = new Set<number>();
-      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-      for (let ci = 0; ci < columns.length; ci++) {
-        const colName = columns[ci];
-        // Column name heuristic
-        if (/date/i.test(colName)) { dateCols.add(ci); continue; }
-        // Check first data cell's display text for date pattern
-        for (let c = range.s.c; c <= range.e.c; c++) {
-          const hdr = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
-          if (hdr?.v != null && String(hdr.v) === colName) {
-            const cell = ws[XLSX.utils.encode_cell({ r: range.s.r + 1, c })];
-            if (cell?.t === 'n' && cell?.w && /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(cell.w)) {
-              dateCols.add(ci);
-            }
-            break;
-          }
-        }
-      }
-
       compact[name] = {
         columns,
-        data: rows.map(row => columns.map((col, ci) => {
+        data: rows.map(row => columns.map(col => {
           const v = row[col];
-          if (dateCols.has(ci) && typeof v === 'number' && v > 25000 && v < 100000) {
-            return excelSerialToISO(v);
+          if (v instanceof Date) {
+            // SheetJS dates land ~2h before midnight UTC. Add 4h to get correct day.
+            const adjusted = new Date(v.getTime() + 4 * 3600000);
+            return adjusted.toISOString().slice(0, 10);
           }
           return v;
         })),

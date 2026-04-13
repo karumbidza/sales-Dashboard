@@ -54,7 +54,7 @@ function excelSerialToISO(serial: number): string {
 }
 
 export function parseExcelBuffer(buffer: Buffer | ArrayBuffer): ParsedSheets {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheets: Record<string, Record<string, any>[]> = {};
   for (const name of wb.SheetNames) {
     sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
@@ -86,13 +86,16 @@ function localISO(d: Date): string {
 
 export function parseDate(val: any): string | null {
   if (val == null) return null;
-  // Excel serial number (cellDates: false) — e.g. 46113 = 2026-04-01
+  // Excel serial number (cellDates: false fallback)
   if (typeof val === 'number' && val > 25000 && val < 100000) {
     return excelSerialToISO(val);
   }
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
-    return localISO(val);
+    // SheetJS cellDates creates dates ~2h before midnight UTC (e.g. 21:59).
+    // Add 4h so the UTC date lands on the correct calendar day.
+    const adjusted = new Date(val.getTime() + 4 * 3600000);
+    return adjusted.toISOString().slice(0, 10);
   }
   const s = String(val).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -110,7 +113,8 @@ export function parseDateDayFirst(val: any): string | null {
   }
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
-    return localISO(val);
+    const adjusted = new Date(val.getTime() + 4 * 3600000);
+    return adjusted.toISOString().slice(0, 10);
   }
   const s = String(val).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
