@@ -68,7 +68,13 @@ async function parseExcelClientSide(file: File): Promise<ParsedExcel> {
         columns,
         data: rows.map(row => columns.map(col => {
           const v = row[col];
-          if (v instanceof Date) return v.toISOString();
+          if (v instanceof Date) {
+            // Format as local YYYY-MM-DD — toISOString() shifts to UTC and loses a day
+            const y = v.getFullYear();
+            const m = String(v.getMonth() + 1).padStart(2, '0');
+            const d = String(v.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          }
           return v;
         })),
       };

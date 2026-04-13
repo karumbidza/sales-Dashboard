@@ -71,32 +71,43 @@ export function compactToSheets(
 
 // ── Date parsing ───────────────────────────────────────────────────────────
 
+// Format a Date as local YYYY-MM-DD (avoids toISOString UTC shift)
+function localISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function parseDate(val: any): string | null {
   if (val == null) return null;
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
-    return val.toISOString().slice(0, 10);
+    return localISO(val);
   }
   const s = String(val).trim();
+  // If already YYYY-MM-DD, return as-is (no Date conversion needed)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // If ISO string with time, extract the date part
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  return localISO(d);
 }
 
 export function parseDateDayFirst(val: any): string | null {
   if (val == null) return null;
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return null;
-    return val.toISOString().slice(0, 10);
+    return localISO(val);
   }
   const s = String(val).trim();
+  // If already YYYY-MM-DD, return as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
   // Try DD/MM/YYYY or DD-MM-YYYY
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (m) {
-    const d = new Date(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   }
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  return localISO(d);
 }
