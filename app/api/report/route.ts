@@ -882,9 +882,9 @@ function buildReportHTML(data: any): string {
   .charts-row { display: grid; grid-template-columns: 2.4fr 1fr;
                 gap: 10px; margin-top: 10px; }
   .chart-card { background: #fff; border: 1px solid #e5e7eb;
-                border-radius: 10px; padding: 10px 14px;
+                border-radius: 10px; padding: 6px 6px;
                 display: flex; flex-direction: column; }
-  .chart-card.daily { height: 290px; }
+  .chart-card.daily { }
   .chart-card.donut { height: 290px; align-items: center; }
   .chart-title { font-size: 11px; font-weight: 700; color: #111827;
                  margin-bottom: 6px; align-self: flex-start; }
