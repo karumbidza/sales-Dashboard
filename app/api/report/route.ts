@@ -1175,7 +1175,7 @@ function buildReportHTML(data: any): string {
 </div>
 
 <!-- ─────────────── PAGE 3 — Charts ─────────────── -->
-<div class="page">
+<div class="page" style="page-break-before:always">
 
   <div class="pghdr">
     <h2>${data.yearly?.year ?? ''} Volume Outlook</h2>
