@@ -78,58 +78,63 @@ function buildReportHTML(data: any): string {
   const growthArrow = (n: number) => n >= 0 ? '▲' : '▼';
 
   // ── Inline SVG: stacked daily volume bar chart ─────────────────────────
-  // Daily Volume Trend — matches dashboard SalesTrendChart exactly:
-  // stacked bars (diesel/blend/ULP) + total line + budget/stretch lines + colored dots
+  // Daily Volume Trend — mirrors dashboard SalesTrendChart:
+  // Only renders slots for days WITH DATA (fills full width like Recharts).
+  // Stacked bars (diesel/blend/ULP) + total line + budget/stretch lines + colored dots.
   const dailyChartSVG = (rows: any[], info: { year: number; month: number; monthEndDay: number }): string => {
-    const W = 1200, H = 280, P = { l: 52, r: 16, t: 10, b: 44 };
-    const innerW = W - P.l - P.r;
-    const innerH = H - P.t - P.b;
-    const totalDays = info.monthEndDay;
-    if (!rows || rows.length === 0 || totalDays <= 0) {
-      return `<svg viewBox="0 0 ${W} ${H}" width="100%">
-        <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="11" fill="#9ca3af">No daily data</text>
+    if (!rows || rows.length === 0) {
+      return `<svg viewBox="0 0 800 200" width="100%">
+        <text x="400" y="100" text-anchor="middle" font-size="11" fill="#9ca3af">No daily data</text>
       </svg>`;
     }
 
     const DIESEL = '#1e40af', BLEND = '#0891b2', ULP = '#059669';
-    const TOTAL = '#6366f1', BUDGET_C = '#f59e0b', STRETCH_C = '#dc2626';
+    const TOTAL_C = '#6366f1', BUDGET_C = '#f59e0b', STRETCH_C = '#dc2626';
     const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+    const totalDays = info.monthEndDay;
     const monthlyBudget  = rows[0]?.budget_volume  ?? 0;
     const monthlyStretch = rows[0]?.stretch_volume ?? 0;
     const dailyRate      = totalDays > 0 ? monthlyBudget  / totalDays : 0;
     const dailyStretch   = totalDays > 0 ? monthlyStretch / totalDays : 0;
 
-    // Map data by day-of-month
-    interface DayData { total: number; diesel: number; blend: number; ulp: number; }
-    const byDay: Record<number, DayData> = {};
-    let lastDayWithData = 0;
+    // Collect only days that have data — these get chart slots (like Recharts)
+    interface DayData { day: number; total: number; diesel: number; blend: number; ulp: number; label: string; }
+    const dataPoints: DayData[] = [];
     for (const r of rows) {
       const d = parseInt(String(r.date || r.period || '').slice(8, 10), 10);
       if (!Number.isFinite(d) || d < 1 || d > totalDays) continue;
-      const total = Number(r?.actual_volume || 0);
-      byDay[d] = {
-        total,
+      const dt = new Date(info.year, info.month - 1, d);
+      dataPoints.push({
+        day: d,
+        total:  Number(r?.actual_volume || 0),
         diesel: Number(r?.diesel_volume || 0),
         blend:  Number(r?.blend_volume  || 0),
         ulp:    Number(r?.ulp_volume    || 0),
-      };
-      if (total > 0 && d > lastDayWithData) lastDayWithData = d;
+        label:  `${WEEKDAYS[dt.getDay()]} ${String(d).padStart(2, '0')}`,
+      });
+    }
+    if (dataPoints.length === 0) {
+      return `<svg viewBox="0 0 800 200" width="100%"><text x="400" y="100" text-anchor="middle" font-size="11" fill="#9ca3af">No data</text></svg>`;
     }
 
-    const avgDaily = (() => {
-      const vals = Object.values(byDay).filter(v => v.total > 0).map(v => v.total);
-      return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-    })();
+    // Chart dimensions — scale width to number of data points
+    const nSlots = dataPoints.length;
+    const slotW = 38; // px per day slot (like Recharts bar spacing)
+    const W = Math.max(800, 56 + nSlots * slotW + 20);
+    const H = 260;
+    const P = { l: 56, r: 20, t: 10, b: 44 };
+    const innerW = W - P.l - P.r;
+    const innerH = H - P.t - P.b;
+    const xStep = innerW / nSlots;
+    const barW = Math.max(8, xStep * 0.55);
 
-    const xStep = innerW / totalDays;
-    const barW  = Math.max(3, xStep * 0.6);
-    const allTotals = Object.values(byDay).map(v => v.total);
-    const yMax = Math.max(...allTotals, dailyRate, dailyStretch, avgDaily) * 1.15 || 1;
+    const allTotals = dataPoints.map(d => d.total);
+    const yMax = Math.max(...allTotals, dailyRate, dailyStretch) * 1.15 || 1;
     const yScale = (v: number) => P.t + innerH - (v / yMax) * innerH;
     const barH = (v: number) => (v / yMax) * innerH;
 
-    // Grid lines + Y ticks
+    // Grid + Y ticks
     const grid: string[] = [];
     for (let i = 0; i <= 4; i++) {
       const v = (yMax * i) / 4;
@@ -138,84 +143,59 @@ function buildReportHTML(data: any): string {
                 : v >= 1_000     ? `${Math.round(v / 1_000)}K`
                 : Math.round(v).toString();
       grid.push(`<line x1="${P.l}" x2="${W - P.r}" y1="${y}" y2="${y}" stroke="#f0f0f0" stroke-dasharray="3 3"/>`);
-      grid.push(`<text x="${P.l - 6}" y="${y + 4}" text-anchor="end" font-size="9.5" fill="#9ca3af">${lbl}</text>`);
+      grid.push(`<text x="${P.l - 8}" y="${y + 4}" text-anchor="end" font-size="10" fill="#6b7280">${lbl}</text>`);
     }
 
-    const bars: string[] = [];
-    const dots: string[] = [];
-    const xLbls: string[] = [];
+    const elems: string[] = [];
     const totalLine: string[] = [];
-    const projLine: string[] = [];
-    for (let day = 1; day <= totalDays; day++) {
-      const cx = P.l + xStep * (day - 0.5);
-      const dd = byDay[day];
-      const dt = new Date(info.year, info.month - 1, day);
-      const wd = WEEKDAYS[dt.getDay()];
 
-      if (dd && dd.total > 0) {
-        // Stacked bars: diesel (bottom) → blend (middle) → ULP (top)
+    for (let i = 0; i < nSlots; i++) {
+      const dp = dataPoints[i];
+      const cx = P.l + xStep * (i + 0.5);
+
+      // Stacked bars
+      if (dp.total > 0) {
         const bx = cx - barW / 2;
-        let stackY = yScale(0); // baseline
-
-        if (dd.diesel > 0) {
-          const h = barH(dd.diesel);
-          stackY -= h;
-          bars.push(`<rect x="${bx}" y="${stackY}" width="${barW}" height="${h}" fill="${DIESEL}" rx="1"/>`);
-        }
-        if (dd.blend > 0) {
-          const h = barH(dd.blend);
-          stackY -= h;
-          bars.push(`<rect x="${bx}" y="${stackY}" width="${barW}" height="${h}" fill="${BLEND}" rx="1"/>`);
-        }
-        if (dd.ulp > 0) {
-          const h = barH(dd.ulp);
-          stackY -= h;
-          bars.push(`<rect x="${bx}" y="${stackY}" width="${barW}" height="${h}" fill="${ULP}" rx="1"/>`);
-        }
-
-        // Total line point
-        const cy = yScale(dd.total);
-        totalLine.push(`${cx},${cy}`);
-
-        // Dot — color by budget/stretch achievement
-        const metStretch = dailyStretch > 0 && dd.total >= dailyStretch;
-        const metBudget  = dailyRate > 0 && dd.total >= dailyRate;
-        const fill   = metStretch ? '#16a34a' : metBudget ? '#84cc16' : '#ffffff';
-        const stroke = metStretch || metBudget ? '#ffffff' : TOTAL;
-        const radius = metStretch ? 5.5 : metBudget ? 5 : 4;
-        dots.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.8"/>`);
+        let stackY = yScale(0);
+        if (dp.diesel > 0) { const h = barH(dp.diesel); stackY -= h; elems.push(`<rect x="${bx}" y="${stackY}" width="${barW}" height="${h}" fill="${DIESEL}" rx="2"/>`); }
+        if (dp.blend > 0)  { const h = barH(dp.blend);  stackY -= h; elems.push(`<rect x="${bx}" y="${stackY}" width="${barW}" height="${h}" fill="${BLEND}" rx="2"/>`); }
+        if (dp.ulp > 0)    { const h = barH(dp.ulp);    stackY -= h; elems.push(`<rect x="${bx}" y="${stackY}" width="${barW}" height="${h}" fill="${ULP}" rx="2"/>`); }
       }
 
-      // Projection line from last data day through month end
-      if (day >= lastDayWithData && avgDaily > 0) {
-        projLine.push(`${cx},${yScale(avgDaily)}`);
-      }
+      // Total line point
+      const cy = yScale(dp.total);
+      totalLine.push(`${cx},${cy}`);
 
-      // X-axis label — every day, like the dashboard
-      xLbls.push(`<text x="${cx}" y="${H - 22}" text-anchor="middle" font-size="8.5" font-weight="600" fill="#374151">${wd}</text>`);
-      xLbls.push(`<text x="${cx}" y="${H - 10}" text-anchor="middle" font-size="8.5" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
+      // Dot
+      const metStretch = dailyStretch > 0 && dp.total >= dailyStretch;
+      const metBudget  = dailyRate > 0 && dp.total >= dailyRate;
+      const fill   = metStretch ? '#16a34a' : metBudget ? '#84cc16' : '#ffffff';
+      const stroke = metStretch || metBudget ? '#ffffff' : TOTAL_C;
+      const r = metStretch ? 5.5 : metBudget ? 5 : 4;
+      elems.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.8"/>`);
+
+      // X label
+      elems.push(`<text x="${cx}" y="${H - 20}" text-anchor="middle" font-size="9" font-weight="600" fill="#374151">${dp.label.split(' ')[0]}</text>`);
+      elems.push(`<text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#6b7280">${dp.label.split(' ')[1]}</text>`);
     }
 
+    // Reference lines span full chart width
     const budgetLine = dailyRate > 0
-      ? `<line x1="${P.l}" x2="${W - P.r}" y1="${yScale(dailyRate)}" y2="${yScale(dailyRate)}" stroke="${BUDGET_C}" stroke-width="2" stroke-dasharray="5 5"/>`
+      ? `<line x1="${P.l}" x2="${W - P.r}" y1="${yScale(dailyRate)}" y2="${yScale(dailyRate)}" stroke="${BUDGET_C}" stroke-width="2" stroke-dasharray="6 4"/>`
       : '';
     const stretchLine = dailyStretch > 0
-      ? `<line x1="${P.l}" x2="${W - P.r}" y1="${yScale(dailyStretch)}" y2="${yScale(dailyStretch)}" stroke="${STRETCH_C}" stroke-width="1.5" stroke-dasharray="3 3"/>`
-      : '';
-    const projSvg = projLine.length > 1
-      ? `<polyline points="${projLine.join(' ')}" fill="none" stroke="#a5b4fc" stroke-width="1.5" stroke-dasharray="4 4"/>`
+      ? `<line x1="${P.l}" x2="${W - P.r}" y1="${yScale(dailyStretch)}" y2="${yScale(dailyStretch)}" stroke="${STRETCH_C}" stroke-width="1.5" stroke-dasharray="4 3"/>`
       : '';
 
     return `
-      <svg viewBox="0 0 ${W} ${H}" width="100%">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">
         ${grid.join('')}
-        ${bars.join('')}
+        ${elems.filter(e => e.startsWith('<rect')).join('')}
         ${budgetLine}
         ${stretchLine}
-        ${projSvg}
-        <polyline points="${totalLine.join(' ')}" fill="none" stroke="${TOTAL}" stroke-width="2.5"/>
-        ${dots.join('')}
-        ${xLbls.join('')}
+        <polyline points="${totalLine.join(' ')}" fill="none" stroke="${TOTAL_C}" stroke-width="2.5" stroke-linejoin="round"/>
+        ${elems.filter(e => e.startsWith('<circle')).join('')}
+        ${elems.filter(e => e.startsWith('<text')).join('')}
       </svg>
     `;
   };
