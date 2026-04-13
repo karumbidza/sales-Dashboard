@@ -897,7 +897,7 @@ function buildReportHTML(data: any): string {
                     width: 100%; height: 100%; }
   .chart-card.donut svg { max-width: 220px; max-height: 220px; }
   /* Yearly chart on page 2 — sized to share the page with the daily trend */
-  .chart-card.yearly { height: 300px; }
+  .chart-card.yearly { max-height: 280px; overflow: hidden; }
   /* Daily chart variant on page 2 — slightly more compact than the page-1 size */
   .chart-card.daily.compact { }
 </style>
@@ -1188,7 +1188,7 @@ function buildReportHTML(data: any): string {
       const stats = dailyChartStats(data.trend || [], data.trendMonth || { monthEndDay: 30 });
       return stats ? ` · ${stats}` : '';
     })()}</small></div>
-  <div class="chart-card daily compact" style="margin-bottom:8px">
+  <div class="chart-card daily compact" style="margin-bottom:6px;max-height:260px;overflow:hidden">
     ${dailyChartSVG(data.trend || [], data.trendMonth || { year: new Date().getFullYear(), month: new Date().getMonth()+1, monthEndDay: 30 })}
     ${dailyChartLegend(data.trend || [], data.trendMonth || { monthEndDay: 30 })}
   </div>
