@@ -81,7 +81,7 @@ function buildReportHTML(data: any): string {
   // Daily Volume Trend — matches dashboard SalesTrendChart exactly:
   // stacked bars (diesel/blend/ULP) + total line + budget/stretch lines + colored dots
   const dailyChartSVG = (rows: any[], info: { year: number; month: number; monthEndDay: number }): string => {
-    const W = 1000, H = 220, P = { l: 48, r: 12, t: 8, b: 36 };
+    const W = 1200, H = 280, P = { l: 52, r: 16, t: 10, b: 44 };
     const innerW = W - P.l - P.r;
     const innerH = H - P.t - P.b;
     const totalDays = info.monthEndDay;
@@ -138,7 +138,7 @@ function buildReportHTML(data: any): string {
                 : v >= 1_000     ? `${Math.round(v / 1_000)}K`
                 : Math.round(v).toString();
       grid.push(`<line x1="${P.l}" x2="${W - P.r}" y1="${y}" y2="${y}" stroke="#f0f0f0" stroke-dasharray="3 3"/>`);
-      grid.push(`<text x="${P.l - 6}" y="${y + 3}" text-anchor="end" font-size="8" fill="#9ca3af">${lbl}</text>`);
+      grid.push(`<text x="${P.l - 6}" y="${y + 4}" text-anchor="end" font-size="9.5" fill="#9ca3af">${lbl}</text>`);
     }
 
     const bars: string[] = [];
@@ -146,8 +146,6 @@ function buildReportHTML(data: any): string {
     const xLbls: string[] = [];
     const totalLine: string[] = [];
     const projLine: string[] = [];
-    const labelStep = totalDays <= 16 ? 1 : 2;
-
     for (let day = 1; day <= totalDays; day++) {
       const cx = P.l + xStep * (day - 0.5);
       const dd = byDay[day];
@@ -184,8 +182,8 @@ function buildReportHTML(data: any): string {
         const metBudget  = dailyRate > 0 && dd.total >= dailyRate;
         const fill   = metStretch ? '#16a34a' : metBudget ? '#84cc16' : '#ffffff';
         const stroke = metStretch || metBudget ? '#ffffff' : TOTAL;
-        const radius = metStretch ? 4.5 : metBudget ? 4 : 3;
-        dots.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`);
+        const radius = metStretch ? 5.5 : metBudget ? 5 : 4;
+        dots.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="1.8"/>`);
       }
 
       // Projection line from last data day through month end
@@ -193,11 +191,9 @@ function buildReportHTML(data: any): string {
         projLine.push(`${cx},${yScale(avgDaily)}`);
       }
 
-      // X-axis labels
-      if (day === 1 || day % labelStep === 0 || day === totalDays) {
-        xLbls.push(`<text x="${cx}" y="${H - 18}" text-anchor="middle" font-size="7.5" font-weight="600" fill="#374151">${wd}</text>`);
-        xLbls.push(`<text x="${cx}" y="${H - 8}"  text-anchor="middle" font-size="7.5" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
-      }
+      // X-axis label — every day, like the dashboard
+      xLbls.push(`<text x="${cx}" y="${H - 22}" text-anchor="middle" font-size="8.5" font-weight="600" fill="#374151">${wd}</text>`);
+      xLbls.push(`<text x="${cx}" y="${H - 10}" text-anchor="middle" font-size="8.5" fill="#6b7280">${String(day).padStart(2,'0')}</text>`);
     }
 
     const budgetLine = dailyRate > 0
@@ -217,7 +213,7 @@ function buildReportHTML(data: any): string {
         ${budgetLine}
         ${stretchLine}
         ${projSvg}
-        <polyline points="${totalLine.join(' ')}" fill="none" stroke="${TOTAL}" stroke-width="2.2"/>
+        <polyline points="${totalLine.join(' ')}" fill="none" stroke="${TOTAL}" stroke-width="2.5"/>
         ${dots.join('')}
         ${xLbls.join('')}
       </svg>
@@ -918,7 +914,7 @@ function buildReportHTML(data: any): string {
   /* Yearly chart on page 2 — sized to share the page with the daily trend */
   .chart-card.yearly { height: 300px; }
   /* Daily chart variant on page 2 — slightly more compact than the page-1 size */
-  .chart-card.daily.compact { height: 220px; }
+  .chart-card.daily.compact { }
 </style>
 </head>
 <body>
