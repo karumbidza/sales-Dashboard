@@ -761,8 +761,7 @@ function buildReportHTML(data: any): string {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
                color: #111827; background: #ffffff; -webkit-print-color-adjust: exact; }
-  .page { padding: 20px 32px; min-height: 210mm; position: relative; }
-  .page.fixed { height: 210mm; overflow: hidden; }
+  .page { padding: 20px 32px; position: relative; }
 
   /* ── Header ─────────────────────────────────────────────────── */
   .hdr { display: flex; justify-content: space-between; align-items: flex-end;
@@ -859,7 +858,13 @@ function buildReportHTML(data: any): string {
          font-size: 8.5px; color: #9ca3af; }
 
   /* ── Page breaks ───────────────────────────────────────────── */
-  .page + .page, .page + div { page-break-before: always; }
+  @media print {
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+  }
+  @media screen {
+    .page { margin-bottom: 20px; border-bottom: 2px dashed #e5e7eb; }
+  }
   .pghdr { display: flex; justify-content: space-between; align-items: baseline;
            margin-bottom: 8px; padding-bottom: 6px;
            border-bottom: 2px solid #1e3a5f; }
@@ -900,7 +905,7 @@ function buildReportHTML(data: any): string {
 <body>
 
 <!-- ─────────────────────────── PAGE 1 — KPIs ─────────────────────────── -->
-<div class="page fixed">
+<div class="page">
 
   <div class="hdr">
     <div>
@@ -1121,7 +1126,7 @@ function buildReportHTML(data: any): string {
 </div>
 
 <!-- ─────────────── PAGE 2 — Top 20 Sites ─────────────── -->
-<div class="page fixed">
+<div class="page">
 
   <div class="pghdr">
     <h2>Top 20 Sites</h2>
@@ -1171,7 +1176,7 @@ function buildReportHTML(data: any): string {
 </div>
 
 <!-- ─────────────── PAGE 3 — Charts ─────────────── -->
-<div class="page fixed">
+<div class="page">
 
   <div class="pghdr">
     <h2>${data.yearly?.year ?? ''} Volume Outlook</h2>
@@ -1229,7 +1234,7 @@ function buildReportHTML(data: any): string {
 </div>
 
 <!-- ─────────────────────── PAGE 4+ — Full Site Breakdown (multi-page) ─────────────────────── -->
-<div style="padding: 20px 32px;">
+<div class="page">
 
   <div class="pghdr">
     <h2>Full Site Breakdown</h2>
@@ -1292,7 +1297,7 @@ function buildReportHTML(data: any): string {
     </tbody>
   </table></div>
 
-  <div class="ftr" style="padding:20px 32px 20px;">
+  <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
     <span>Full Site Breakdown</span>
   </div>
