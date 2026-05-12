@@ -7,7 +7,6 @@ import SalesTrendChart from '@/components/charts/SalesTrendChart';
 import TopSitesTable from '@/components/tables/TopSitesTable';
 import SiteBreakdownTable from '@/components/tables/SiteBreakdownTable';
 import DashboardFilters from '@/components/ui/DashboardFilters';
-import ReconciliationPanel from '@/components/ui/ReconciliationPanel';
 import DataManagementTab from '@/components/ui/DataManagementTab';
 import DatabaseViewerTab from '@/components/ui/DatabaseViewerTab';
 import ReportGenerator from '@/components/ui/ReportGenerator';
@@ -63,11 +62,6 @@ const TAB_ICONS: Record<string, JSX.Element> = {
       <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h3a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h3a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
     </svg>
   ),
-  reconcile: (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
-    </svg>
-  ),
   reports: (
     <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
       <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/>
@@ -85,14 +79,13 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 const TAB_LABELS: Record<string, string> = {
   overview:  'Overview',
   sites:     'Sites',
-  reconcile: 'Reconciliation',
   reports:   'Reports',
   data:      'Data Management',
   dbviewer:  'Database Viewer',
 };
 
-type Tab = 'overview' | 'sites' | 'reconcile' | 'reports' | 'data' | 'dbviewer';
-const ALL_TABS: Tab[] = ['overview', 'sites', 'reconcile', 'reports', 'data', 'dbviewer'];
+type Tab = 'overview' | 'sites' | 'reports' | 'data' | 'dbviewer';
+const ALL_TABS: Tab[] = ['overview', 'sites', 'reports', 'data', 'dbviewer'];
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
@@ -241,12 +234,6 @@ export default function DashboardPage() {
             >
               {TAB_ICONS[tab]}
               {TAB_LABELS[tab]}
-              {tab === 'reconcile' && (
-                <span className="ml-1 bg-amber-400 text-amber-900 text-[9px] font-bold
-                                 px-1.5 py-0.5 rounded-full leading-none">
-                  !
-                </span>
-              )}
             </button>
           ))}
         </div>
@@ -304,11 +291,6 @@ export default function DashboardPage() {
               />
             </Section>
           </>
-        )}
-
-        {/* RECONCILIATION */}
-        {!loading && activeTab === 'reconcile' && (
-          <ReconciliationPanel filters={filters} />
         )}
 
         {/* REPORTS */}
