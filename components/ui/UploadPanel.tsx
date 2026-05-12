@@ -166,6 +166,7 @@ export default function UploadPanel({ onSuccess }: Props) {
   const [ingestLog, setIngestLog] = useState('');
   const [errorMsg, setErrorMsg]   = useState('');
   const [dragging, setDragging]   = useState(false);
+  const [dataType, setDataType]   = useState<'sales' | 'maintenance'>('sales');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
@@ -177,9 +178,17 @@ export default function UploadPanel({ onSuccess }: Props) {
 
   const handleFile = (f: File) => {
     if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
-      setFile(f); setParsed(null); setParsing(true); setPhase('idle');
+      setFile(f); setParsed(null); setPhase('idle');
       setValidation(null); setRowCounts(null); setErrorMsg('');
 
+      if (dataType === 'maintenance') {
+        // Maintenance uploads skip the sales-specific multi-sheet parser.
+        // Parsing happens inside handleValidate instead.
+        setParsing(false);
+        return;
+      }
+
+      setParsing(true);
       parseExcelClientSide(f).then(result => {
         setParsed(result);
         setParsing(false);
@@ -195,12 +204,46 @@ export default function UploadPanel({ onSuccess }: Props) {
   // Send only the columns the server needs for each check — NOT the full file.
 
   const handleValidate = async () => {
-    if (!file || !parsed) return;
+    if (!file) return;
     setPhase('validating');
     setValidation(null);
+    setPreflight(null);
     setErrorMsg('');
 
     try {
+      if (dataType === 'maintenance') {
+        // Parse the first sheet to a row array
+        const xlsxModule = await import('xlsx');
+        const XLSX = xlsxModule.default ?? xlsxModule;
+        const ab = await file.arrayBuffer();
+        const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+        const sheetName = wb.SheetNames[0];
+        if (!sheetName) throw new Error('No sheets found in file');
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(
+          wb.Sheets[sheetName], { defval: null, raw: false }
+        );
+
+        const { data } = await postJSON('/api/validate', {
+          dataType: 'maintenance',
+          rows,
+          fileName: file.name,
+        });
+
+        // Stash the parsed rows so handleIngest can reuse them without re-parsing
+        (window as any).__rmParsedRows = rows;
+
+        setValidation({
+          checks: [], summary: { errors: 0, warnings: 0, passed: 0 },
+          sheetRowCounts: {}, dateRange: null, fileName: file.name, ok: false, canIngest: false,
+          ...data,
+        });
+        setPhase('validated');
+        return;
+      }
+
+      // ──── Sales validation (unchanged below) ────
+      if (!parsed) return;
+
       // Build lightweight payload: full column names + row counts + slimmed row data
       const allColumns: Record<string, string[]> = {};
       const rowCountsMap: Record<string, number> = {};
@@ -372,14 +415,47 @@ export default function UploadPanel({ onSuccess }: Props) {
   // Send one sheet at a time to stay under Vercel's 4.5MB limit.
 
   const handleIngest = async () => {
-    if (!file || !parsed) return;
+    if (!file) return;
     setPhase('ingesting');
     const start = Date.now();
 
-    const selectedKeys = Object.entries(sheets).filter(([, v]) => v).map(([k]) => k);
-    const periodStr = period ? period + '-01' : '';
-
     try {
+      if (dataType === 'maintenance') {
+        const rows = (window as any).__rmParsedRows;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new Error('No parsed R&M rows available — please re-validate');
+        }
+
+        const { data } = await postJSON('/api/ingest', {
+          dataType: 'maintenance',
+          rows,
+          fileName: file.name,
+        });
+
+        if (!data.ok) {
+          throw new Error(data.error || 'R&M ingest failed');
+        }
+
+        setDuration(Date.now() - start);
+        setRowCounts({
+          name_index: 0,
+          volume_budget: 0,
+          status_report: data.summary?.inserted || 0,
+          petrotrade: 0,
+          margin: 0,
+        } as any);
+        setPhase('done');
+        onSuccess();
+        delete (window as any).__rmParsedRows;
+        return;
+      }
+
+      // ──── Sales ingest (unchanged below) ────
+      if (!parsed) return;
+
+      const selectedKeys = Object.entries(sheets).filter(([, v]) => v).map(([k]) => k);
+      const periodStr = period ? period + '-01' : '';
+
       // Step 1: Create upload_log
       const { data: startData } = await postJSON('/api/ingest', {
         action: 'start',
@@ -468,6 +544,20 @@ export default function UploadPanel({ onSuccess }: Props) {
           Upload your Retail Dashboard Excel file directly. The system validates
           structure before writing any data.
         </p>
+      </div>
+
+      {/* ── Data type selector ───────────────────────────── */}
+      <div className="mb-4">
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Data type</label>
+        <select
+          value={dataType}
+          onChange={e => setDataType(e.target.value as 'sales' | 'maintenance')}
+          disabled={phase !== 'idle' && phase !== 'error'}
+          className="text-sm border border-gray-300 rounded px-2 py-1 disabled:bg-gray-100 disabled:text-gray-400"
+        >
+          <option value="sales">Sales (Status Report)</option>
+          <option value="maintenance">R&amp;M (Repairs &amp; Maintenance)</option>
+        </select>
       </div>
 
       {/* ── Drop zone ────────────────────────────────────── */}
@@ -578,7 +668,7 @@ export default function UploadPanel({ onSuccess }: Props) {
       )}
 
       {/* ── Action buttons ────────────────────────────────── */}
-      {file && parsed && phase === 'idle' && (
+      {file && (dataType === 'maintenance' || parsed) && phase === 'idle' && (
         <button onClick={handleValidate}
                 className="w-full h-9 bg-[#1e3a5f] hover:bg-[#162d4a] text-white
                            text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
@@ -729,7 +819,14 @@ export default function UploadPanel({ onSuccess }: Props) {
               </div>
             );
           })}
-          {validation.canIngest && (
+          {validation.canIngest && dataType === 'maintenance' && (
+            <button onClick={handleIngest}
+                    className="w-full h-9 bg-emerald-600 hover:bg-emerald-700 text-white
+                               text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
+              Upload R&amp;M Data
+            </button>
+          )}
+          {validation.canIngest && dataType === 'sales' && (
             <button onClick={handlePreflight}
                     className="w-full h-9 bg-[#1e3a5f] hover:bg-[#162d4a] text-white
                                text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
