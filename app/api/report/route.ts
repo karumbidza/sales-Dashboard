@@ -7,7 +7,6 @@ import { GET as topSitesHandler } from '@/app/api/top-sites/route';
 import { GET as territoriesHandler } from '@/app/api/territory-performance/route';
 import { GET as trendHandler } from '@/app/api/sales-trend/route';
 import { GET as yearlyHandler } from '@/app/api/yearly-volume-vs-budget/route';
-import { GET as unmatchedHandler } from '@/app/api/unmatched-rows/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -1198,31 +1197,6 @@ function buildReportHTML(data: any): string {
     ${yearlyChartLegend(data.yearly?.year || 0, data.yearly?.priorYear || 0)}
   </div>
 
-  ${data.unmatched?.counts?.all > 0 ? `
-  <div class="stitle" style="margin-top:8px">Unmatched Submissions</div>
-  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:6px 10px">
-    <div style="font-size:9px;color:#991b1b;font-weight:600;margin-bottom:4px">
-      ${data.unmatched.counts.distinctCodes} site code(s) · ${data.unmatched.counts.all} row(s) dropped
-    </div>
-    <table style="width:100%;font-size:8px">
-      <thead><tr>
-        <th style="text-align:left;padding:2px 4px;color:#7f1d1d">Raw Code</th>
-        <th style="text-align:left;padding:2px 4px;color:#7f1d1d">Sheet</th>
-        <th style="text-align:right;padding:2px 4px;color:#7f1d1d">Rows</th>
-      </tr></thead>
-      <tbody>
-        ${(data.unmatched.data || []).slice(0, 6).map((u: any) => `
-          <tr>
-            <td style="padding:2px 4px;font-family:monospace;color:#dc2626;font-weight:600">${esc(u.rawSiteCode)}</td>
-            <td style="padding:2px 4px;color:#6b7280">${esc(u.sheet)}</td>
-            <td style="padding:2px 4px;text-align:right;color:#374151">${u.rowCount}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-  ` : ''}
-
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
     <span>Page 3</span>
@@ -1369,13 +1343,12 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
+    const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes] = await Promise.all([
       callHandler('kpis',        kpisHandler,        params),
       callHandler('topSites',    topSitesHandler,     new URLSearchParams(params.toString() + `&limit=20&sortBy=${topSitesSort}`)),
       callHandler('territories', territoriesHandler,  params),
       callHandler('trend',       trendHandler,        trendParams),
       callHandler('yearly',      yearlyHandler,       yearlyParams).catch(() => null),
-      callHandler('unmatched',   unmatchedHandler,    new URLSearchParams({ pageSize: '10' })).catch(() => null),
     ]);
 
     const failedEndpoints = [
@@ -1521,7 +1494,6 @@ export async function POST(req: NextRequest) {
       margin:    marginRow,
       breakdown: breakdownRows,
       yearly:    yearlyRes && !yearlyRes.error    ? yearlyRes    : null,
-      unmatched: unmatchedRes && !unmatchedRes.error ? unmatchedRes : null,
     });
 
     // Return HTML for client-side PDF printing (no Puppeteer dependency)

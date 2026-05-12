@@ -3,27 +3,27 @@
 
 import { useState } from 'react';
 import { Filters } from '@/app/dashboard/page';
-import type { AllSitesSortKey } from '@/components/tables/AllSitesPanel';
 
-// Map the dashboard's client-side sort key to the /api/top-sites sort key.
-const SORT_TO_API: Record<AllSitesSortKey, string> = {
-  volume:        'volume',
-  vsBudgetPct:   'vs_budget',
-  vsStretchPct:  'vs_stretch',
-  revenue:       'revenue',
-  avgDaily:      'avg_daily',
-  netMarginCpl:  'net_margin',
-};
+// Top 20 sort options for the report. Default is vs_stretch — most useful
+// for "who's pushing past their stretch target" reporting.
+const TOP_SITES_SORTS: { value: string; label: string }[] = [
+  { value: 'vs_stretch', label: 'Vs Stretch %' },
+  { value: 'vs_budget',  label: 'Vs Budget %' },
+  { value: 'volume',     label: 'Volume' },
+  { value: 'revenue',    label: 'Revenue' },
+  { value: 'avg_daily',  label: 'Avg Daily' },
+  { value: 'net_margin', label: 'Net Margin / L' },
+];
 
 interface Props {
   filters: Filters;
-  sitesSortBy?: AllSitesSortKey;
   onClose: () => void;
 }
 
-export default function ReportGenerator({ filters, sitesSortBy = 'volume', onClose }: Props) {
+export default function ReportGenerator({ filters, onClose }: Props) {
   const [reportName, setReportName]   = useState('');
   const [generatedBy, setGeneratedBy] = useState('');
+  const [topSitesSort, setTopSitesSort] = useState('vs_stretch');
   const [generating, setGenerating]   = useState(false);
 
   const generate = async () => {
@@ -43,7 +43,7 @@ export default function ReportGenerator({ filters, sitesSortBy = 'volume', onClo
           product:     filters.product || null,
           generatedBy: generatedBy || 'Analyst',
           reportName:  reportName || `Sales Report ${filters.dateFrom} → ${filters.dateTo}`,
-          sortBy:      SORT_TO_API[sitesSortBy],
+          sortBy:      topSitesSort,
         }),
       });
       clearTimeout(timer);
@@ -147,6 +147,18 @@ export default function ReportGenerator({ filters, sitesSortBy = 'volume', onClo
               placeholder="e.g. Sales Manager"
               className="w-full border border-gray-200 rounded-md px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Sort Top 20 by</label>
+            <select
+              value={topSitesSort}
+              onChange={e => setTopSitesSort(e.target.value)}
+              className="w-full border border-gray-200 rounded-md px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+            >
+              {TOP_SITES_SORTS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </div>
 
           <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500 space-y-1">

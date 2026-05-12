@@ -298,7 +298,6 @@ export default function DashboardPage() {
       {reportOpen && (
         <ReportGenerator
           filters={filters}
-          sitesSortBy={sitesSortBy}
           onClose={() => setReportOpen(false)}
         />
       )}
