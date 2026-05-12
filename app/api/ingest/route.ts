@@ -550,6 +550,14 @@ export async function POST(req: NextRequest) {
 
   const contentType = req.headers.get('content-type') || '';
 
+  // Detect R&M ingest (single-call JSON path). Sales path is unchanged.
+  if (contentType.includes('application/json')) {
+    const peekBody = await req.clone().json().catch(() => ({}));
+    if (peekBody?.dataType === 'maintenance') {
+      return ingestMaintenance(peekBody);
+    }
+  }
+
   // ── Per-sheet JSON protocol ──────────────────────────────
   if (contentType.includes('application/json')) {
     const body = await req.json();
@@ -723,5 +731,101 @@ export async function POST(req: NextRequest) {
       ).catch(() => {});
     }
     return NextResponse.json({ error: err.message || 'Ingestion failed — check server logs' }, { status: 500 });
+  }
+}
+
+async function ingestMaintenance(body: any): Promise<NextResponse> {
+  const startMs = Date.now();
+  const rows: Record<string, any>[] = Array.isArray(body?.rows) ? body.rows : [];
+  const fileName: string = body?.fileName || 'maintenance.xlsx';
+  if (rows.length === 0) {
+    return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
+  }
+
+  // 1. Create an upload_log entry (status='pending')
+  const logRow = await query<{ id: number }>(
+    `INSERT INTO upload_log (file_name, file_size_bytes, status) VALUES ($1, $2, 'pending') RETURNING id`,
+    [fileName, 0]
+  );
+  const uploadId = logRow[0].id;
+
+  try {
+    // 2. Build site name → code map
+    const dbRows = await query<{ site_code: string; budget_name: string }>(
+      'SELECT site_code, UPPER(budget_name) AS budget_name FROM sites'
+    );
+    const nameToCode = new Map(dbRows.map(r => [r.budget_name, r.site_code]));
+
+    // 3. Classify each row
+    const matched: any[][] = [];
+    const unmatched: any[][] = [];
+    let skippedBadDate = 0;
+    let skippedBadCost = 0;
+
+    for (const r of rows) {
+      const rawName = safeStr(r['Site']);
+      const dateStr = parseDate(r['Date']) || parseDateDayFirst(r['Date']);
+      const cost = safeFloat(r['Cost'], null);
+      const category = safeStr(r['Category']) || 'Uncategorized';
+
+      if (!dateStr) { skippedBadDate++; continue; }
+      if (cost === null) { skippedBadCost++; continue; }
+
+      const code = rawName ? nameToCode.get(rawName.toUpperCase()) : undefined;
+      if (!code) {
+        unmatched.push([rawName || '(blank)', dateStr, 'MAINTENANCE', fileName, uploadId]);
+        continue;
+      }
+      matched.push([code, dateStr, cost, category, uploadId, fileName]);
+    }
+
+    // 4. Batch insert matched rows into maintenance_costs
+    if (matched.length > 0) {
+      await batchUpsert(
+        `INSERT INTO maintenance_costs (site_code, service_date, cost, category, upload_log_id, source_file) VALUES __VALUES__`,
+        matched
+      );
+    }
+
+    // 5. Batch insert unmatched rows
+    if (unmatched.length > 0) {
+      await batchUpsert(
+        `INSERT INTO unmatched_status_rows (raw_site_code, sale_date, sheet_name, source_file, upload_log_id) VALUES __VALUES__`,
+        unmatched
+      );
+    }
+
+    // 6. Update upload_log to success
+    const rowCounts = {
+      total: rows.length,
+      inserted: matched.length,
+      unmatched: unmatched.length,
+      skipped_bad_date: skippedBadDate,
+      skipped_bad_cost: skippedBadCost,
+      data_type: 'maintenance',
+    };
+    await query(
+      `UPDATE upload_log SET status='success', row_counts=$1, duration_ms=$2 WHERE id=$3`,
+      [JSON.stringify(rowCounts), Date.now() - startMs, uploadId]
+    );
+
+    return NextResponse.json({
+      ok: true,
+      uploadLogId: uploadId,
+      summary: {
+        total: rows.length,
+        inserted: matched.length,
+        unmatched: unmatched.length,
+        skippedBadDate,
+        skippedBadCost,
+      },
+    });
+  } catch (err: any) {
+    console.error('/api/ingest (maintenance) error:', err);
+    await query(
+      `UPDATE upload_log SET status='failed', error_message=$1, duration_ms=$2 WHERE id=$3`,
+      [err.message || 'unknown error', Date.now() - startMs, uploadId]
+    ).catch(() => {});
+    return NextResponse.json({ error: err.message || 'Ingest failed' }, { status: 500 });
   }
 }
