@@ -409,7 +409,7 @@ async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
     // 4. Cost numeric
     let badCost = 0;
     for (const r of rows) {
-      const c = safeFloat(r['Cost']);
+      const c = safeFloat(r['Cost'], null);
       if (c === null || (typeof c === 'number' && isNaN(c))) badCost++;
     }
     if (badCost > 0) {
