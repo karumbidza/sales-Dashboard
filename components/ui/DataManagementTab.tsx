@@ -190,8 +190,6 @@ const SCHEMA: { table: string; sheet: string; sheetTone: string; rows: string; p
   { table: 'petrotrade_sales',   sheet: 'PETROTRADE',    sheetTone: 'blue',  rows: '1K+',     purpose: 'Partner coupon volumes at fixed $0.05/L margin' },
   { table: 'site_margins',       sheet: 'MARGIN',        sheetTone: 'amber', rows: '900+',    purpose: 'Monthly $/litre net margin per site (same shape as VOLUME BUDGET)' },
   { table: 'reconciliation_log', sheet: 'Auto-built',    sheetTone: 'amber', rows: 'Dynamic', purpose: 'Control gap: status vs invoiced — flags >2% variance automatically' },
-  { table: 'reports',            sheet: 'App',           sheetTone: 'gray',  rows: 'Dynamic', purpose: 'PDF report metadata and generation history' },
-  { table: 'report_comments',    sheet: 'App',           sheetTone: 'gray',  rows: 'Dynamic', purpose: 'Analyst comments attached to reports, exported to PDF' },
   { table: 'upload_log',         sheet: 'App',           sheetTone: 'gray',  rows: 'Dynamic', purpose: 'Audit trail of all Excel uploads with row counts and errors' },
   { table: 'upload_changes',     sheet: 'App',           sheetTone: 'gray',  rows: 'Dynamic', purpose: 'Per-field overwrite log captured during ingestion preflight' },
 ];

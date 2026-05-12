@@ -3,9 +3,9 @@
 import { useMemo, useState } from 'react';
 import SiteBreakdownTable from './SiteBreakdownTable';
 
-type SortKey = 'volume' | 'vsBudgetPct' | 'vsStretchPct' | 'revenue' | 'avgDaily' | 'netMarginCpl';
+export type AllSitesSortKey = 'volume' | 'vsBudgetPct' | 'vsStretchPct' | 'revenue' | 'avgDaily' | 'netMarginCpl';
 
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+const SORT_OPTIONS: { key: AllSitesSortKey; label: string }[] = [
   { key: 'volume',        label: 'Volume' },
   { key: 'vsBudgetPct',   label: 'Vs Budget %' },
   { key: 'vsStretchPct',  label: 'Vs Stretch %' },
@@ -14,9 +14,14 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'netMarginCpl',  label: 'Net Margin / L' },
 ];
 
-export default function AllSitesPanel({ data }: { data: any[] }) {
+interface Props {
+  data: any[];
+  sortBy: AllSitesSortKey;
+  onSortChange: (k: AllSitesSortKey) => void;
+}
+
+export default function AllSitesPanel({ data, sortBy, onSortChange }: Props) {
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<SortKey>('volume');
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -47,7 +52,7 @@ export default function AllSitesPanel({ data }: { data: any[] }) {
           <label className="text-xs font-semibold text-gray-500">Sort by</label>
           <select
             value={sortBy}
-            onChange={e => setSortBy(e.target.value as SortKey)}
+            onChange={e => onSortChange(e.target.value as AllSitesSortKey)}
             className="text-sm border border-gray-200 rounded-md px-2 py-1.5"
           >
             {SORT_OPTIONS.map(o => (

@@ -23,7 +23,7 @@ function esc(s: any): string {
 
 // ── Generates the HTML that Puppeteer will render ────────────────────────────
 function buildReportHTML(data: any): string {
-  const { meta, kpis, topSites, territories, margin, breakdown, comments } = data;
+  const { meta, kpis, topSites, territories, margin, breakdown } = data;
   const fmtVol  = (n: number | null | undefined) =>
     n == null ? '—' : Math.round(Number(n)).toLocaleString('en');
   const fmtRev  = (n: number | null | undefined) => {
@@ -1129,7 +1129,14 @@ function buildReportHTML(data: any): string {
 
   <div class="pghdr">
     <h2>Top 20 Sites</h2>
-    <span>Sorted by vs stretch · ${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
+    <span>Sorted by ${({
+      volume:     'volume',
+      revenue:    'revenue',
+      vs_budget:  'vs budget',
+      vs_stretch: 'vs stretch',
+      avg_daily:  'avg daily',
+      net_margin: 'net margin',
+    } as Record<string, string>)[meta.topSitesSort] || 'vs stretch'} · ${fmtPeriod(meta.dateFrom)} → ${fmtPeriod(meta.dateTo)}</span>
   </div>
 
   <div class="tcard"><table>
@@ -1144,7 +1151,7 @@ function buildReportHTML(data: any): string {
       <th class="num">Vs Stretch</th>
     </tr></thead>
     <tbody>
-      ${(topSites || []).sort((a: any, b: any) => (b.vsStretchPct ?? 0) - (a.vsStretchPct ?? 0)).map((s: any, i: number) => `
+      ${(topSites || []).map((s: any, i: number) => `
         <tr>
           <td><span class="rnk">${i + 1}</span></td>
           <td><strong>${esc(s.siteName)}</strong></td>
@@ -1157,16 +1164,6 @@ function buildReportHTML(data: any): string {
         </tr>`).join('')}
     </tbody>
   </table></div>
-
-  ${comments && comments.length > 0 ? `
-    <div class="stitle" style="margin-top: 10px">Analyst Notes</div>
-    ${comments.map((c: any) => `
-      <div class="cmt">
-        <div class="who"><strong>${esc(c.author)}</strong> · ${new Date(c.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}${c.ref_site_code ? ` · ${esc(c.ref_site_code)}` : ''}</div>
-        <div class="txt">${esc(c.comment_text)}</div>
-      </div>
-    `).join('')}
-  ` : ''}
 
   <div class="ftr">
     <span>Redan Sales Dashboard · Confidential</span>
@@ -1332,6 +1329,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     let { dateFrom, dateTo } = body;
     const { territory, product, generatedBy, reportName } = body;
+    const VALID_REPORT_SORTS = new Set(['volume', 'revenue', 'vs_budget', 'vs_stretch', 'avg_daily', 'net_margin']);
+    const topSitesSort: string = VALID_REPORT_SORTS.has(body.sortBy) ? body.sortBy : 'vs_stretch';
 
     if (!dateFrom || !dateTo) {
       return NextResponse.json({ error: 'dateFrom and dateTo are required' }, { status: 400 });
@@ -1372,7 +1371,7 @@ export async function POST(req: NextRequest) {
 
     const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
       callHandler('kpis',        kpisHandler,        params),
-      callHandler('topSites',    topSitesHandler,     new URLSearchParams(params.toString() + '&limit=20&sortBy=vs_stretch')),
+      callHandler('topSites',    topSitesHandler,     new URLSearchParams(params.toString() + `&limit=20&sortBy=${topSitesSort}`)),
       callHandler('territories', territoriesHandler,  params),
       callHandler('trend',       trendHandler,        trendParams),
       callHandler('yearly',      yearlyHandler,       yearlyParams).catch(() => null),
@@ -1392,28 +1391,6 @@ export async function POST(req: NextRequest) {
         error: 'Report data failed: ' + failedEndpoints.join('; '),
       }, { status: 500 });
     }
-
-    // Create report record
-    const reportRow = await queryOne<any>(
-      `INSERT INTO reports (report_name, date_from, date_to, territory_filter, product_filter, generated_by, report_metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [
-        reportName || `Sales Report ${dateFrom} to ${dateTo}`,
-        dateFrom, dateTo,
-        territory || null,
-        product || null,
-        generatedBy || 'System',
-        JSON.stringify({ kpis: kpisRes }),
-      ]
-    );
-
-    const reportId = reportRow.id;
-
-    // Fetch comments
-    const commentsRows = await query(
-      'SELECT * FROM report_comments WHERE report_id = $1 ORDER BY created_at',
-      [reportId]
-    );
 
     // ── Margin total for the period ────────────────────────────────────────
     // site_margins holds $/L per (site, month). Multiply by actual monthly
@@ -1535,7 +1512,7 @@ export async function POST(req: NextRequest) {
 
     // Build HTML
     const html = buildReportHTML({
-      meta: { dateFrom, dateTo, territory, generatedBy, reportName },
+      meta: { dateFrom, dateTo, territory, generatedBy, reportName, topSitesSort },
       kpis: kpisRes,
       topSites: topSitesRes.data || [],
       territories: territoriesRes.data || [],
@@ -1543,13 +1520,12 @@ export async function POST(req: NextRequest) {
       trendMonth: { year: refYear, month: refMonth, monthEndDay },
       margin:    marginRow,
       breakdown: breakdownRows,
-      comments:  commentsRows,
       yearly:    yearlyRes && !yearlyRes.error    ? yearlyRes    : null,
       unmatched: unmatchedRes && !unmatchedRes.error ? unmatchedRes : null,
     });
 
     // Return HTML for client-side PDF printing (no Puppeteer dependency)
-    return NextResponse.json({ reportId, html });
+    return NextResponse.json({ html });
 
   } catch (err: any) {
     console.error('/api/report error:', err);
@@ -1557,11 +1533,3 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
-  // List reports
-  const rows = await query(
-    `SELECT id, report_name, date_from, date_to, territory_filter, generated_by, created_at
-     FROM reports ORDER BY created_at DESC LIMIT 50`
-  );
-  return NextResponse.json({ data: rows });
-}

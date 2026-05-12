@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import KPICards from '@/components/KPICards';
 import SalesTrendChart from '@/components/charts/SalesTrendChart';
-import AllSitesPanel from '@/components/tables/AllSitesPanel';
+import AllSitesPanel, { AllSitesSortKey } from '@/components/tables/AllSitesPanel';
 import DashboardFilters from '@/components/ui/DashboardFilters';
 import DataManagementTab from '@/components/ui/DataManagementTab';
 import ReportGenerator from '@/components/ui/ReportGenerator';
@@ -101,6 +101,7 @@ export default function DashboardPage() {
   const [loading, setLoading]       = useState(true);
   const [activeTab, setActiveTab]   = useState<Tab>('overview');
   const [reportOpen, setReportOpen] = useState(false);
+  const [sitesSortBy, setSitesSortBy] = useState<AllSitesSortKey>('volume');
 
   const buildQS = (f: Filters) => {
     const p = new URLSearchParams();
@@ -257,11 +258,6 @@ export default function DashboardPage() {
         {/* OVERVIEW */}
         {!loading && activeTab === 'overview' && (
           <>
-            {reportOpen && (
-              <Section title="Report Generator" sub="Generate a PDF of the current view">
-                <ReportGenerator filters={filters} />
-              </Section>
-            )}
             <KPICards kpis={kpis} />
 
             <Section title="Territory Scorecard" sub="Sorted by volume">
@@ -281,7 +277,11 @@ export default function DashboardPage() {
             </Section>
 
             <Section title="All Sites">
-              <AllSitesPanel data={topSites} />
+              <AllSitesPanel
+                data={topSites}
+                sortBy={sitesSortBy}
+                onSortChange={setSitesSortBy}
+              />
             </Section>
           </>
         )}
@@ -293,6 +293,15 @@ export default function DashboardPage() {
 
 
       </main>
+
+      {/* Report modal — overlays the page, doesn't push content */}
+      {reportOpen && (
+        <ReportGenerator
+          filters={filters}
+          sitesSortBy={sitesSortBy}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
     </div>
   );
 }

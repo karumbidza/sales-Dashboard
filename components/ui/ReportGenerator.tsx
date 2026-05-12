@@ -1,29 +1,30 @@
 // components/ui/ReportGenerator.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Filters } from '@/app/dashboard/page';
+import type { AllSitesSortKey } from '@/components/tables/AllSitesPanel';
 
-interface Props { filters: Filters; }
+// Map the dashboard's client-side sort key to the /api/top-sites sort key.
+const SORT_TO_API: Record<AllSitesSortKey, string> = {
+  volume:        'volume',
+  vsBudgetPct:   'vs_budget',
+  vsStretchPct:  'vs_stretch',
+  revenue:       'revenue',
+  avgDaily:      'avg_daily',
+  netMarginCpl:  'net_margin',
+};
 
-export default function ReportGenerator({ filters }: Props) {
+interface Props {
+  filters: Filters;
+  sitesSortBy?: AllSitesSortKey;
+  onClose: () => void;
+}
+
+export default function ReportGenerator({ filters, sitesSortBy = 'volume', onClose }: Props) {
   const [reportName, setReportName]   = useState('');
   const [generatedBy, setGeneratedBy] = useState('');
   const [generating, setGenerating]   = useState(false);
-  const [pastReports, setPastReports] = useState<any[]>([]);
-
-  // Helper: parse JSON only if the response is OK and actually has a body
-  const safeJson = async (res: Response) => {
-    if (!res.ok) return null;
-    try { return await res.json(); } catch { return null; }
-  };
-
-  useEffect(() => {
-    fetch('/api/report')
-      .then(safeJson)
-      .then(d => setPastReports(d?.data || []))
-      .catch(() => setPastReports([]));
-  }, []);
 
   const generate = async () => {
     setGenerating(true);
@@ -42,6 +43,7 @@ export default function ReportGenerator({ filters }: Props) {
           product:     filters.product || null,
           generatedBy: generatedBy || 'Analyst',
           reportName:  reportName || `Sales Report ${filters.dateFrom} → ${filters.dateTo}`,
+          sortBy:      SORT_TO_API[sitesSortBy],
         }),
       });
       clearTimeout(timer);
@@ -92,8 +94,6 @@ export default function ReportGenerator({ filters }: Props) {
           w.document.close();
         }
       }
-      // Refresh report list
-      fetch('/api/report').then(r => r.json()).then(d => setPastReports(d.data || []));
     } catch (err: any) {
       const msg = err.name === 'AbortError'
         ? 'Report generation timed out (60s). Try a smaller date range or specific territory.'
@@ -105,13 +105,29 @@ export default function ReportGenerator({ filters }: Props) {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Report Generator */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-1">📄 Generate PDF Report</h3>
-        <p className="text-xs text-gray-400 mb-4">
-          Creates a structured PDF with KPIs, charts, top sites and territory breakdown.
-        </p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-md p-5"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700">Generate PDF Report</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              KPIs, charts, top 20 (current sort), and full site list.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-gray-400 hover:text-gray-600 text-lg leading-none px-1"
+          >
+            ×
+          </button>
+        </div>
 
         <div className="space-y-3">
           <div>
@@ -155,27 +171,6 @@ export default function ReportGenerator({ filters }: Props) {
           </button>
         </div>
       </div>
-
-      {/* Past Reports */}
-      {pastReports.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">🗂 Past Reports</h3>
-          <div className="space-y-2">
-            {pastReports.slice(0, 8).map((r: any) => (
-              <div key={r.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg hover:bg-blue-50 transition">
-                <div>
-                  <p className="text-xs font-medium text-gray-700">{r.report_name}</p>
-                  <p className="text-xs text-gray-400">
-                    {r.date_from} → {r.date_to}
-                    {r.territory_filter && ` · ${r.territory_filter}`}
-                    {' · '}{r.generated_by}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
