@@ -2,6 +2,7 @@
 
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import UploadPanel from './UploadPanel';
+import UnmatchedRowsPanel from './UnmatchedRowsPanel';
 
 // ──────────────────────────────────────────────────────────────
 // Types
@@ -97,7 +98,9 @@ function UploadAndHistory({ onSuccess }: { onSuccess: () => void }) {
   const handleSuccess = () => { onSuccess(); load(); };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+    <>
+      <UnmatchedRowsPanel />
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start mt-5">
       {/* LEFT: Upload panel (existing) */}
       <UploadPanel onSuccess={handleSuccess} />
 
@@ -171,6 +174,7 @@ function UploadAndHistory({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

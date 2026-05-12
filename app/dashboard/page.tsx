@@ -5,12 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import KPICards from '@/components/KPICards';
 import SalesTrendChart from '@/components/charts/SalesTrendChart';
-import TopSitesTable from '@/components/tables/TopSitesTable';
-import SiteBreakdownTable from '@/components/tables/SiteBreakdownTable';
+import AllSitesPanel from '@/components/tables/AllSitesPanel';
 import DashboardFilters from '@/components/ui/DashboardFilters';
 import DataManagementTab from '@/components/ui/DataManagementTab';
 import ReportGenerator from '@/components/ui/ReportGenerator';
-import UnmatchedRowsPanel from '@/components/ui/UnmatchedRowsPanel';
 import YearlyVolumeBudgetChart from '@/components/charts/YearlyVolumeBudgetChart';
 import TerritoryScorecard from '@/components/charts/TerritoryScorecard';
 
@@ -57,11 +55,6 @@ const TAB_ICONS: Record<string, JSX.Element> = {
       <path d="M2 10a8 8 0 1116 0 8 8 0 01-16 0zm8-3a1 1 0 100 2 1 1 0 000-2zm-1 4a1 1 0 102 0v3a1 1 0 10-2 0v-3z"/>
     </svg>
   ),
-  sites: (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-      <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h3a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h3a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
-    </svg>
-  ),
   data: (
     <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
       <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/>
@@ -72,13 +65,12 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 };
 
 const TAB_LABELS: Record<string, string> = {
-  overview:  'Overview',
-  sites:     'Sites',
+  overview:  'Sales Dashboard',
   data:      'Data Management',
 };
 
-type Tab = 'overview' | 'sites' | 'data';
-const ALL_TABS: Tab[] = ['overview', 'sites', 'data'];
+type Tab = 'overview' | 'data';
+const ALL_TABS: Tab[] = ['overview', 'data'];
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
@@ -288,22 +280,8 @@ export default function DashboardPage() {
               }} />
             </Section>
 
-            <Section title="Top 20 Sites by Budget">
-              <TopSitesTable data={topSites.slice(0, 20)} />
-            </Section>
-          </>
-        )}
-
-        {/* SITES */}
-        {!loading && activeTab === 'sites' && (
-          <>
-            <UnmatchedRowsPanel />
-            <Section title="Full Site Breakdown" sub="Sorted by volume">
-              <SiteBreakdownTable
-                data={[...topSites].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))}
-                type="sites"
-                paginate
-              />
+            <Section title="All Sites">
+              <AllSitesPanel data={topSites} />
             </Section>
           </>
         )}
