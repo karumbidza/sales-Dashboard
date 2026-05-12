@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     };
     const limit = Math.min(Math.max(1, parseInt(sp.get('limit') || '10')), 1000);
     const rawSort = sp.get('sortBy') || 'volume';
-    const VALID_SORTS = ['volume', 'revenue', 'vs_budget', 'budget'] as const;
+    const VALID_SORTS = ['volume', 'revenue', 'vs_budget', 'vs_stretch', 'budget'] as const;
     if (!VALID_SORTS.includes(rawSort as any)) {
       return NextResponse.json({ error: 'Invalid sortBy value' }, { status: 400 });
     }
@@ -144,9 +144,10 @@ export async function GET(req: NextRequest) {
           ELSE NULL END                                 AS vs_stretch_pct,
         ROW_NUMBER() OVER (ORDER BY wb.volume DESC)     AS rank
       FROM with_budget wb, grand_total gt
-      ORDER BY ${sortBy === 'vs_budget' ? 'vs_budget_pct DESC NULLS LAST'
-                : sortBy === 'revenue'  ? 'revenue DESC'
-                : sortBy === 'budget'   ? 'budget_volume DESC NULLS LAST'
+      ORDER BY ${sortBy === 'vs_budget'  ? 'vs_budget_pct DESC NULLS LAST'
+                : sortBy === 'vs_stretch' ? 'vs_stretch_pct DESC NULLS LAST'
+                : sortBy === 'revenue'    ? 'revenue DESC'
+                : sortBy === 'budget'     ? 'budget_volume DESC NULLS LAST'
                 : 'volume DESC'}
       LIMIT $${nextOffset + 3}
     `, [...params, rangeFrom, rangeTo, limit]);

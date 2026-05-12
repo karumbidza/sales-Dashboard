@@ -1372,7 +1372,7 @@ export async function POST(req: NextRequest) {
 
     const [kpisRes, topSitesRes, territoriesRes, trendRes, yearlyRes, unmatchedRes] = await Promise.all([
       callHandler('kpis',        kpisHandler,        params),
-      callHandler('topSites',    topSitesHandler,     new URLSearchParams(params.toString() + '&limit=20&sortBy=budget')),
+      callHandler('topSites',    topSitesHandler,     new URLSearchParams(params.toString() + '&limit=20&sortBy=vs_stretch')),
       callHandler('territories', territoriesHandler,  params),
       callHandler('trend',       trendHandler,        trendParams),
       callHandler('yearly',      yearlyHandler,       yearlyParams).catch(() => null),
