@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import KPICards from '@/components/KPICards';
 import SalesTrendChart from '@/components/charts/SalesTrendChart';
@@ -239,6 +240,12 @@ export default function DashboardPage() {
               {TAB_LABELS[tab]}
             </button>
           ))}
+          <Link
+            href="/dashboard/maintenance"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all"
+          >
+            Maintenance
+          </Link>
         </div>
       </header>
 

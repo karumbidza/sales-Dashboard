@@ -159,10 +159,21 @@ export default function MaintenancePage() {
             </select>
           </div>
           <button
-            id="export-rm-pdf"
-            disabled
-            title="PDF export will be wired up next"
-            className="ml-auto text-xs font-medium bg-[#1e3a5f]/60 text-white px-3 py-1.5 rounded-md cursor-not-allowed"
+            onClick={async () => {
+              const root = document.getElementById('rm-export-root');
+              if (!root) return;
+              const mod = await import('html2pdf.js');
+              const html2pdf = (mod as any).default ?? mod;
+              await html2pdf().set({
+                margin: 6,
+                filename: `RM-Report-${filters.dateFrom}_to_${filters.dateTo}.pdf`,
+                image: { type: 'jpeg', quality: 0.95 },
+                html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+                pagebreak: { mode: ['css', 'legacy'] },
+              }).from(root).save();
+            }}
+            className="ml-auto text-xs font-medium bg-[#1e3a5f] text-white px-3 py-1.5 rounded-md hover:bg-[#162a45]"
           >
             Export PDF
           </button>
@@ -190,9 +201,9 @@ export default function MaintenancePage() {
               <MaintenanceKPICards kpis={kpis} />
             </div>
 
-            <div className="card mt-5">
+            <div className="card mt-5" style={{ pageBreakBefore: 'always' }}>
               <h2 className="text-sm font-semibold text-gray-800 mb-3">R&amp;M Cost Trend</h2>
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={trend} margin={{ left: 8, right: 24, top: 8, bottom: 8 }}>
                   <CartesianGrid stroke="#f3f4f6" />
                   <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} />
