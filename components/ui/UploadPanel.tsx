@@ -173,6 +173,7 @@ export default function UploadPanel({ onSuccess }: Props) {
     setFile(null); setParsed(null); setParsing(false); setPeriod(''); setPhase('idle');
     setValidation(null); setPreflight(null); setRowCounts(null); setDuration(null);
     setIngestLog(''); setErrorMsg('');
+    delete (window as any).__rmParsedRows;
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -437,13 +438,7 @@ export default function UploadPanel({ onSuccess }: Props) {
         }
 
         setDuration(Date.now() - start);
-        setRowCounts({
-          name_index: 0,
-          volume_budget: 0,
-          status_report: data.summary?.inserted || 0,
-          petrotrade: 0,
-          margin: 0,
-        } as any);
+        setRowCounts({ maintenance: data.summary?.inserted || 0 } as any);
         setPhase('done');
         onSuccess();
         delete (window as any).__rmParsedRows;
