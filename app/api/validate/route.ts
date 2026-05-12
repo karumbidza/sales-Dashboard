@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import {
   parseExcelBuffer, compactToSheets, safeStr, siteCode, parseBudgetMonthCol, parseDate,
+  safeFloat, parseDateDayFirst,
 } from '@/lib/xlsx-parse';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,24 @@ export async function POST(req: NextRequest) {
     let fileName = 'upload.xlsx';
 
     const contentType = req.headers.get('content-type') || '';
+
+    // Determine dataType (default 'sales' for backwards compatibility)
+    let dataType: 'sales' | 'maintenance' = 'sales';
+    try {
+      if (contentType.includes('application/json')) {
+        const peek = await req.clone().json();
+        if (peek?.dataType === 'maintenance') dataType = 'maintenance';
+      } else {
+        const fd = await req.clone().formData();
+        if (fd.get('dataType') === 'maintenance') dataType = 'maintenance';
+      }
+    } catch {
+      // peek failed; fall through with default 'sales'
+    }
+
+    if (dataType === 'maintenance') {
+      return validateMaintenance(req);
+    }
 
     if (contentType.includes('application/json')) {
       const body = await req.json();
@@ -310,6 +329,130 @@ export async function POST(req: NextRequest) {
       checks: [{ id: 'system', sheet: null, title: 'Validator error', status: 'error', detail: err.message }],
       summary: { errors: 1, warnings: 0, passed: 0 },
       sheetRowCounts: {}, dateRange: null,
+    }, { status: 500 });
+  }
+}
+
+const MAINT_REQUIRED_COLS = ['Site', 'Date', 'Cost', 'Category'];
+
+async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
+  try {
+    const contentType = req.headers.get('content-type') || '';
+
+    let rows: Record<string, any>[];
+    let fileName = 'maintenance.xlsx';
+
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      rows = Array.isArray(body.rows) ? body.rows : [];
+      fileName = body.fileName || fileName;
+    } else {
+      const fd = await req.formData();
+      const file = fd.get('file') as File | null;
+      if (!file) {
+        return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const parsed = parseExcelBuffer(buffer);
+      const sheetName = parsed.sheetNames[0];
+      rows = parsed.sheets[sheetName] || [];
+      fileName = file.name;
+    }
+
+    const checks: Check[] = [];
+    const summary = { errors: 0, warnings: 0, passed: 0 };
+    const addCheck = (id: string, sheet: string | null, title: string, status: Check['status'], detail: string) => {
+      checks.push({ id, sheet, title, status, detail });
+      if (status === 'error') summary.errors++;
+      else if (status === 'warning') summary.warnings++;
+      else summary.passed++;
+    };
+
+    // 1. Row presence
+    if (rows.length === 0) {
+      addCheck('rm_empty', 'MAINTENANCE', 'Sheet has rows', 'error', 'No rows found in file');
+      return NextResponse.json({ ok: false, canIngest: false, checks, summary, fileName });
+    }
+    addCheck('rm_rows', 'MAINTENANCE', 'Row count', 'pass', `${rows.length.toLocaleString()} rows`);
+
+    // 2. Required columns
+    const cols = Object.keys(rows[0]);
+    const missing = MAINT_REQUIRED_COLS.filter(c => !cols.includes(c));
+    if (missing.length > 0) {
+      addCheck('rm_cols', 'MAINTENANCE', 'Required columns', 'error',
+        `Missing: ${missing.join(', ')}. Expected: ${MAINT_REQUIRED_COLS.join(', ')}. Found: ${cols.join(', ')}`);
+    } else {
+      addCheck('rm_cols', 'MAINTENANCE', 'Required columns', 'pass', `All ${MAINT_REQUIRED_COLS.length} columns present`);
+    }
+
+    // 3. Date parseable / range
+    let bad = 0;
+    let minD: string | null = null;
+    let maxD: string | null = null;
+    for (const r of rows) {
+      let d: string | null = parseDate(r['Date']);
+      if (!d) {
+        d = parseDateDayFirst(r['Date']);
+      }
+      if (!d) { bad++; continue; }
+      if (!minD || d < minD) minD = d;
+      if (!maxD || d > maxD) maxD = d;
+    }
+    if (bad > 0) {
+      addCheck('rm_date', 'MAINTENANCE', 'Date column parseable',
+        bad < rows.length * 0.05 ? 'warning' : 'error',
+        `${bad} unparseable date values out of ${rows.length}`);
+    } else {
+      addCheck('rm_date', 'MAINTENANCE', 'Date column parseable', 'pass', `All ${rows.length} dates valid`);
+    }
+
+    // 4. Cost numeric
+    let badCost = 0;
+    for (const r of rows) {
+      const c = safeFloat(r['Cost']);
+      if (c === null || (typeof c === 'number' && isNaN(c))) badCost++;
+    }
+    if (badCost > 0) {
+      addCheck('rm_cost', 'MAINTENANCE', 'Cost column numeric',
+        badCost < rows.length * 0.05 ? 'warning' : 'error',
+        `${badCost} non-numeric Cost values out of ${rows.length}`);
+    } else {
+      addCheck('rm_cost', 'MAINTENANCE', 'Cost column numeric', 'pass', `All ${rows.length} costs numeric`);
+    }
+
+    // 5. Site coverage vs DB
+    try {
+      const dbRows = await query<{ site_code: string; budget_name: string }>(
+        'SELECT site_code, UPPER(budget_name) AS budget_name FROM sites'
+      );
+      const nameToCode = new Map(dbRows.map(r => [r.budget_name, r.site_code]));
+      const unknownNames = new Set<string>();
+      let matched = 0;
+      for (const r of rows) {
+        const name = safeStr(r['Site'])?.toUpperCase();
+        if (!name) continue;
+        if (nameToCode.has(name)) matched++;
+        else unknownNames.add(name);
+      }
+      if (unknownNames.size > 0) {
+        addCheck('rm_sites', 'MAINTENANCE', 'Sites matched to DB', 'warning',
+          `${matched} matched, ${unknownNames.size} unknown (will go to Unmatched Rows): ${Array.from(unknownNames).slice(0, 10).join(', ')}`);
+      } else {
+        addCheck('rm_sites', 'MAINTENANCE', 'Sites matched to DB', 'pass', `All ${matched} site names recognised`);
+      }
+    } catch {
+      // DB unreachable — skip site check
+    }
+
+    const dateRange = minD && maxD ? { from: minD, to: maxD } : null;
+    const canIngest = summary.errors === 0;
+    return NextResponse.json({ ok: canIngest, canIngest, checks, summary, dateRange, fileName });
+  } catch (err: any) {
+    console.error('/api/validate (maintenance) error:', err);
+    return NextResponse.json({
+      ok: false, canIngest: false, error: err.message,
+      checks: [{ id: 'system', sheet: null, title: 'Validator error', status: 'error', detail: err.message }],
+      summary: { errors: 1, warnings: 0, passed: 0 },
     }, { status: 500 });
   }
 }
