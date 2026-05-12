@@ -6,23 +6,10 @@ import { Filters } from '@/app/dashboard/page';
 
 interface Props { filters: Filters; }
 
-interface Comment {
-  id: number;
-  comment_text: string;
-  author: string;
-  comment_type: string;
-  ref_site_code: string | null;
-  created_at: string;
-}
-
 export default function ReportGenerator({ filters }: Props) {
   const [reportName, setReportName]   = useState('');
   const [generatedBy, setGeneratedBy] = useState('');
   const [generating, setGenerating]   = useState(false);
-  const [reportId, setReportId]       = useState<string | null>(null);
-  const [comments, setComments]       = useState<Comment[]>([]);
-  const [newComment, setNewComment]   = useState('');
-  const [commentAuthor, setAuthor]    = useState('');
   const [pastReports, setPastReports] = useState<any[]>([]);
 
   // Helper: parse JSON only if the response is OK and actually has a body
@@ -37,14 +24,6 @@ export default function ReportGenerator({ filters }: Props) {
       .then(d => setPastReports(d?.data || []))
       .catch(() => setPastReports([]));
   }, []);
-
-  useEffect(() => {
-    if (!reportId) return;
-    fetch(`/api/comments?reportId=${reportId}`)
-      .then(safeJson)
-      .then(d => setComments(d?.data || []))
-      .catch(() => setComments([]));
-  }, [reportId]);
 
   const generate = async () => {
     setGenerating(true);
@@ -113,8 +92,6 @@ export default function ReportGenerator({ filters }: Props) {
           w.document.close();
         }
       }
-      if (data.reportId) setReportId(data.reportId);
-
       // Refresh report list
       fetch('/api/report').then(r => r.json()).then(d => setPastReports(d.data || []));
     } catch (err: any) {
@@ -125,28 +102,6 @@ export default function ReportGenerator({ filters }: Props) {
     } finally {
       setGenerating(false);
     }
-  };
-
-  const addComment = async () => {
-    if (!reportId || !newComment.trim()) return;
-    const res = await fetch('/api/comments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        reportId,
-        commentText: newComment,
-        author: commentAuthor || 'Analyst',
-        commentType: 'general',
-      }),
-    });
-    const d = await res.json();
-    setComments(prev => [...prev, d.data]);
-    setNewComment('');
-  };
-
-  const deleteComment = async (id: number) => {
-    await fetch(`/api/comments?id=${id}`, { method: 'DELETE' });
-    setComments(prev => prev.filter(c => c.id !== id));
   };
 
   return (
@@ -201,59 +156,6 @@ export default function ReportGenerator({ filters }: Props) {
         </div>
       </div>
 
-      {/* Comments Section */}
-      {reportId && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">💬 Report Comments</h3>
-          <p className="text-xs text-gray-400 mb-3">Add notes that will be included in the PDF report.</p>
-
-          <div className="space-y-2 mb-4">
-            {comments.length === 0 && (
-              <p className="text-xs text-gray-300 text-center py-3">No comments yet</p>
-            )}
-            {comments.map(c => (
-              <div key={c.id} className="flex gap-2 p-3 bg-amber-50 border border-amber-100 rounded-lg">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold text-gray-700">{c.author}</span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(c.created_at).toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600">{c.comment_text}</p>
-                </div>
-                <button onClick={() => deleteComment(c.id)}
-                  className="text-gray-300 hover:text-red-400 text-sm self-start">×</button>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-2">
-            <input
-              value={commentAuthor}
-              onChange={e => setAuthor(e.target.value)}
-              placeholder="Your name"
-              className="w-full border border-gray-200 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-            />
-            <textarea
-              value={newComment}
-              onChange={e => setNewComment(e.target.value)}
-              placeholder="Add a comment or observation…"
-              rows={3}
-              className="w-full border border-gray-200 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
-            />
-            <button
-              onClick={addComment}
-              disabled={!newComment.trim()}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200
-                text-white text-xs font-semibold rounded-md transition"
-            >
-              + Add Comment
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Past Reports */}
       {pastReports.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -269,12 +171,6 @@ export default function ReportGenerator({ filters }: Props) {
                     {' · '}{r.generated_by}
                   </p>
                 </div>
-                <button
-                  onClick={() => setReportId(r.id)}
-                  className="text-xs text-blue-500 hover:text-blue-700 font-medium ml-3"
-                >
-                  View Comments
-                </button>
               </div>
             ))}
           </div>
