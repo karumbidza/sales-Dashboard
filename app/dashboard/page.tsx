@@ -8,7 +8,6 @@ import TopSitesTable from '@/components/tables/TopSitesTable';
 import SiteBreakdownTable from '@/components/tables/SiteBreakdownTable';
 import DashboardFilters from '@/components/ui/DashboardFilters';
 import DataManagementTab from '@/components/ui/DataManagementTab';
-import DatabaseViewerTab from '@/components/ui/DatabaseViewerTab';
 import ReportGenerator from '@/components/ui/ReportGenerator';
 import UnmatchedRowsPanel from '@/components/ui/UnmatchedRowsPanel';
 import YearlyVolumeBudgetChart from '@/components/charts/YearlyVolumeBudgetChart';
@@ -81,11 +80,10 @@ const TAB_LABELS: Record<string, string> = {
   sites:     'Sites',
   reports:   'Reports',
   data:      'Data Management',
-  dbviewer:  'Database Viewer',
 };
 
-type Tab = 'overview' | 'sites' | 'reports' | 'data' | 'dbviewer';
-const ALL_TABS: Tab[] = ['overview', 'sites', 'reports', 'data', 'dbviewer'];
+type Tab = 'overview' | 'sites' | 'reports' | 'data';
+const ALL_TABS: Tab[] = ['overview', 'sites', 'reports', 'data'];
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
@@ -305,10 +303,6 @@ export default function DashboardPage() {
           <DataManagementTab onSuccess={() => fetchAll(filters)} />
         )}
 
-        {/* DATABASE VIEWER */}
-        {activeTab === 'dbviewer' && (
-          <DatabaseViewerTab />
-        )}
 
       </main>
     </div>
