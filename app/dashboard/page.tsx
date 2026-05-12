@@ -61,11 +61,6 @@ const TAB_ICONS: Record<string, JSX.Element> = {
       <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h3a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h3a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
     </svg>
   ),
-  reports: (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/>
-    </svg>
-  ),
   data: (
     <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
       <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/>
@@ -78,12 +73,11 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 const TAB_LABELS: Record<string, string> = {
   overview:  'Overview',
   sites:     'Sites',
-  reports:   'Reports',
   data:      'Data Management',
 };
 
-type Tab = 'overview' | 'sites' | 'reports' | 'data';
-const ALL_TABS: Tab[] = ['overview', 'sites', 'reports', 'data'];
+type Tab = 'overview' | 'sites' | 'data';
+const ALL_TABS: Tab[] = ['overview', 'sites', 'data'];
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
@@ -113,6 +107,7 @@ export default function DashboardPage() {
   const [territories, setTerritories] = useState<any[]>([]);
   const [loading, setLoading]       = useState(true);
   const [activeTab, setActiveTab]   = useState<Tab>('overview');
+  const [reportOpen, setReportOpen] = useState(false);
 
   const buildQS = (f: Filters) => {
     const p = new URLSearchParams();
@@ -193,6 +188,16 @@ export default function DashboardPage() {
               {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
             <button
+              onClick={() => { setActiveTab('overview'); setReportOpen(v => !v); }}
+              className="flex items-center gap-1.5 text-xs font-medium text-white
+                         bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-md transition"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/>
+              </svg>
+              {reportOpen ? 'Hide Report' : 'Generate Report'}
+            </button>
+            <button
               onClick={() => fetchAll(filters)}
               className="flex items-center gap-1.5 text-xs font-medium text-white
                          bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-md transition"
@@ -253,6 +258,11 @@ export default function DashboardPage() {
         {/* OVERVIEW */}
         {!loading && activeTab === 'overview' && (
           <>
+            {reportOpen && (
+              <Section title="Report Generator" sub="Generate a PDF of the current view">
+                <ReportGenerator filters={filters} />
+              </Section>
+            )}
             <KPICards kpis={kpis} />
 
             <Section title="Territory Scorecard" sub="Sorted by volume">
@@ -289,13 +299,6 @@ export default function DashboardPage() {
               />
             </Section>
           </>
-        )}
-
-        {/* REPORTS */}
-        {activeTab === 'reports' && (
-          <div className="mt-5">
-            <ReportGenerator filters={filters} />
-          </div>
         )}
 
         {/* DATA MANAGEMENT */}
