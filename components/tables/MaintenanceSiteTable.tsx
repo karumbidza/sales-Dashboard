@@ -26,7 +26,7 @@ function fmtCpl(n: number | null) {
   return `$${n.toFixed(4)}`;
 }
 
-export default function MaintenanceSiteTable({ data }: { data: MaintSiteRow[] }) {
+export default function MaintenanceSiteTable({ data, onRowClick }: { data: MaintSiteRow[]; onRowClick?: (row: MaintSiteRow) => void }) {
   const [sortBy, setSortBy]   = useState<SortKey>('costPerLitre');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage]       = useState(1);
@@ -88,7 +88,7 @@ export default function MaintenanceSiteTable({ data }: { data: MaintSiteRow[] })
         </thead>
         <tbody>
           {slice.map(r => (
-            <tr key={r.siteCode} className="border-b border-gray-100 hover:bg-gray-50">
+            <tr key={r.siteCode} className={`border-b border-gray-100 hover:bg-gray-50 ${onRowClick ? 'cursor-pointer' : ''}`} onClick={() => onRowClick?.(r)}>
               <td className="px-3 py-2">{r.siteName}</td>
               <td className="px-3 py-2 text-gray-500">{r.territoryCode || '—'}</td>
               <td className="px-3 py-2 text-right tabular-nums">{r.volume.toLocaleString()}</td>
