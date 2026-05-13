@@ -1,13 +1,14 @@
 {
   "functions": {
-    "app/api/ingest/route.ts": {
-      "maxDuration": 120
-    },
-    "app/api/validate/route.ts": {
-      "maxDuration": 60
-    },
-    "app/api/ingest/preflight/route.ts": {
-      "maxDuration": 60
-    }
-  }
+    "app/api/ingest/route.ts":                                { "maxDuration": 120 },
+    "app/api/validate/route.ts":                              { "maxDuration": 60 },
+    "app/api/ingest/preflight/route.ts":                      { "maxDuration": 60 },
+    "app/api/maintenance/categorize-batch/route.ts":          { "maxDuration": 60 },
+    "app/api/maintenance/anomalies/route.ts":                 { "maxDuration": 30 },
+    "app/api/maintenance/invoices/route.ts":                  { "maxDuration": 30 },
+    "app/api/maintenance/sites/route.ts":                     { "maxDuration": 30 }
+  },
+  "crons": [
+    { "path": "/api/maintenance/categorize-batch", "schedule": "*/5 * * * *" }
+  ]
 }
