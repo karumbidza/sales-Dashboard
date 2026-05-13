@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import CategorizationProgress from '@/components/maintenance/CategorizationProgress';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -167,6 +168,10 @@ export default function UploadPanel({ onSuccess }: Props) {
   const [errorMsg, setErrorMsg]   = useState('');
   const [dragging, setDragging]   = useState(false);
   const [dataType, setDataType]   = useState<'sales' | 'maintenance'>('sales');
+  const [categorizing, setCategorizing] = useState<null | {
+    uploadLogId: number | null;
+    pending: number;
+  }>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
@@ -439,8 +444,14 @@ export default function UploadPanel({ onSuccess }: Props) {
 
         setDuration(Date.now() - start);
         setRowCounts({ maintenance: data.summary?.inserted || 0 } as any);
-        setPhase('done');
-        onSuccess();
+
+        const pending = Number(data.summary?.pending_descriptions || 0);
+        if (pending > 0) {
+          setCategorizing({ uploadLogId: data.uploadLogId ?? null, pending });
+        } else {
+          setPhase('done');
+          onSuccess();
+        }
         delete (window as any).__rmParsedRows;
         return;
       }
@@ -752,6 +763,21 @@ export default function UploadPanel({ onSuccess }: Props) {
         <div className="flex items-center justify-center gap-2 h-9 text-sm text-gray-500">
           <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           Ingesting data — this may take up to 60 seconds…
+        </div>
+      )}
+
+      {/* ── Categorization Progress ───────────────────────── */}
+      {categorizing && (
+        <div className="mt-3">
+          <CategorizationProgress
+            uploadLogId={categorizing.uploadLogId}
+            pendingAtStart={categorizing.pending}
+            onDone={() => {
+              setCategorizing(null);
+              setPhase('done');
+              onSuccess();
+            }}
+          />
         </div>
       )}
 
