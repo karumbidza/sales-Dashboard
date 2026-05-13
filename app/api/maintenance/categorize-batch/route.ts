@@ -100,3 +100,9 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// Vercel cron uses GET. Treat it as POST with no body.
+export async function GET() {
+  const fakeReq = { json: async () => ({}) } as any;
+  return POST(fakeReq);
+}
