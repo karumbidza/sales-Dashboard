@@ -218,15 +218,27 @@ export default function UploadPanel({ onSuccess }: Props) {
 
     try {
       if (dataType === 'maintenance') {
-        // Parse the first sheet to a row array
+        // Pick the R & M FINANCE sheet from the multi-sheet workbook
+        // (fall back to the first sheet if only one is present, for older
+        // single-sheet R&M uploads).
         const xlsxModule = await import('xlsx');
         const XLSX = xlsxModule.default ?? xlsxModule;
         const ab = await file.arrayBuffer();
         const wb = XLSX.read(ab, { type: 'array', cellDates: true });
-        const sheetName = wb.SheetNames[0];
-        if (!sheetName) throw new Error('No sheets found in file');
+
+        const rmSheetName =
+          wb.SheetNames.find(n => n.trim().toUpperCase().replace(/\s+/g, ' ') === 'R & M FINANCE')
+          ?? (wb.SheetNames.length === 1 ? wb.SheetNames[0] : null);
+
+        if (!rmSheetName) {
+          throw new Error(
+            `R&M ingest requires a sheet named "R & M FINANCE". ` +
+            `Found sheets: ${wb.SheetNames.join(', ')}`,
+          );
+        }
+
         const rows = XLSX.utils.sheet_to_json<Record<string, any>>(
-          wb.Sheets[sheetName], { defval: null, raw: false }
+          wb.Sheets[rmSheetName], { defval: null, raw: false }
         );
 
         const { data } = await postJSON('/api/validate', {
