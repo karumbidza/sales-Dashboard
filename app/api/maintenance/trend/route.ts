@@ -7,49 +7,48 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
-    const dateFrom  = sp.get('dateFrom')  || undefined;
-    const dateTo    = sp.get('dateTo')    || undefined;
-    const territory = sp.get('territory') || undefined;
-    const category  = sp.get('category')  || undefined;
-    const siteCode  = sp.get('siteCode')  || undefined;
+    const dateFrom    = sp.get('dateFrom')    || undefined;
+    const dateTo      = sp.get('dateTo')      || undefined;
+    const territory   = sp.get('territory')   || undefined;
+    const categorySlug = sp.get('category')   || undefined;
+    const siteCode    = sp.get('siteCode')    || undefined;
     const granularity = sp.get('granularity') === 'daily' ? 'daily' : 'monthly';
 
-    const clauses: string[] = [];
+    const clauses: string[] = [`i.cost_center = 'retail'`];
     const params: any[] = [];
-    let i = 1;
-    if (dateFrom)  { clauses.push(`m.service_date >= $${i++}`); params.push(dateFrom); }
-    if (dateTo)    { clauses.push(`m.service_date <= $${i++}`); params.push(dateTo); }
-    if (territory) { clauses.push(`t.tm_code = $${i++}`);        params.push(territory.toUpperCase()); }
-    if (category)  { clauses.push(`m.category = $${i++}`);       params.push(category); }
-    if (siteCode)  { clauses.push(`m.site_code = $${i++}`);      params.push(siteCode); }
-    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    let p = 1;
+    if (dateFrom)     { clauses.push(`i.service_date >= $${p++}`); params.push(dateFrom); }
+    if (dateTo)       { clauses.push(`i.service_date <= $${p++}`); params.push(dateTo); }
+    if (territory)    { clauses.push(`t.tm_code = $${p++}`);       params.push(territory.toUpperCase()); }
+    if (categorySlug) { clauses.push(`c.slug = $${p++}`);          params.push(categorySlug); }
+    if (siteCode)     { clauses.push(`i.site_code = $${p++}`);     params.push(siteCode); }
+    const where = `WHERE ${clauses.join(' AND ')}`;
 
-    const bucket   = granularity === 'daily' ? 'm.service_date' : `DATE_TRUNC('month', m.service_date)::DATE`;
-    const labelFmt = granularity === 'daily'
-      ? `TO_CHAR(m.service_date, 'DD Mon')`
-      : `TO_CHAR(DATE_TRUNC('month', m.service_date), 'Mon YYYY')`;
+    const bucket = granularity === 'daily'
+      ? `i.service_date`
+      : `DATE_TRUNC('month', i.service_date)::DATE`;
 
-    const rows = await query<any>(
-      `SELECT ${bucket}::TEXT AS period,
-              ${labelFmt}     AS label,
-              ROUND(SUM(m.cost)::NUMERIC, 2) AS cost,
-              COUNT(*)                       AS events
-       FROM maintenance_costs m
-       JOIN sites si ON m.site_code = si.site_code
-       LEFT JOIN territories t ON si.territory_id = t.id
-       ${where}
-       GROUP BY ${bucket}, ${labelFmt}
-       ORDER BY ${bucket} ASC`,
-      params
-    );
+    const sql = `
+      SELECT ${bucket} AS bucket,
+             ROUND(SUM(i.net_cost)::NUMERIC, 2) AS total_cost,
+             COUNT(*)::INT                       AS invoice_count
+        FROM rm_invoices i
+        JOIN sites si             ON i.site_code = si.site_code
+        LEFT JOIN territories t   ON si.territory_id = t.id
+        LEFT JOIN rm_description_categories r ON i.description_norm = r.description_norm
+        LEFT JOIN rm_categories c ON r.category_id = c.id
+        ${where}
+        GROUP BY bucket
+        ORDER BY bucket
+    `;
+
+    const rows = await query<any>(sql, params);
 
     return NextResponse.json({
-      granularity,
-      data: rows.map((r: any) => ({
-        period: String(r.period).slice(0, 10),
-        label:  r.label,
-        cost:   parseFloat(r.cost),
-        events: parseInt(r.events),
+      data: rows.map(r => ({
+        period:       r.bucket,
+        totalCost:    parseFloat(r.total_cost),
+        invoiceCount: r.invoice_count,
       })),
     });
   } catch (err: any) {
