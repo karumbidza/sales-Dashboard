@@ -333,7 +333,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const MAINT_REQUIRED_COLS = ['Site', 'Date', 'Cost', 'Category'];
+const MAINT_REQUIRED_COLS = ['SITE CODE', 'DATE', 'Description', 'Debit Amount (LCY)', 'Entry No.'];
 
 async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
   try {
@@ -368,85 +368,91 @@ async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
       else summary.passed++;
     };
 
-    // 1. Row presence
-    if (rows.length === 0) {
-      addCheck('rm_empty', 'MAINTENANCE', 'Sheet has rows', 'error', 'No rows found in file');
-      return NextResponse.json({ ok: false, canIngest: false, checks, summary, fileName });
-    }
-    addCheck('rm_rows', 'MAINTENANCE', 'Row count', 'pass', `${rows.length.toLocaleString()} rows`);
+    const SHEET = 'R & M FINANCE';
+    const firstRow = rows.length > 0 ? rows[0] : {};
 
-    // 2. Required columns
-    const cols = Object.keys(rows[0]);
-    const missing = MAINT_REQUIRED_COLS.filter(c => !cols.includes(c));
-    if (missing.length > 0) {
-      addCheck('rm_cols', 'MAINTENANCE', 'Required columns', 'error',
-        `Missing: ${missing.join(', ')}. Expected: ${MAINT_REQUIRED_COLS.join(', ')}. Found: ${cols.join(', ')}`);
+    // 1. Required columns
+    const presentCols = Object.keys(firstRow);
+    const missingCols = MAINT_REQUIRED_COLS.filter(c => !presentCols.includes(c));
+    if (missingCols.length > 0) {
+      addCheck('columns', SHEET, 'Required columns present', 'error',
+        `Missing columns: ${missingCols.join(', ')}`);
     } else {
-      addCheck('rm_cols', 'MAINTENANCE', 'Required columns', 'pass', `All ${MAINT_REQUIRED_COLS.length} columns present`);
+      addCheck('columns', SHEET, 'Required columns present', 'pass',
+        `All ${MAINT_REQUIRED_COLS.length} required columns present`);
     }
 
-    // 3. Date parseable / range
-    let bad = 0;
-    let minD: string | null = null;
-    let maxD: string | null = null;
+    // 2. Entry No. — must be finite and > 0
+    let badEntryNo = 0;
     for (const r of rows) {
-      let d: string | null = parseDate(r['Date']);
-      if (!d) {
-        d = parseDateDayFirst(r['Date']);
-      }
-      if (!d) { bad++; continue; }
-      if (!minD || d < minD) minD = d;
-      if (!maxD || d > maxD) maxD = d;
+      const v = Number(r['Entry No.']);
+      if (!isFinite(v) || v <= 0) badEntryNo++;
     }
-    if (bad > 0) {
-      addCheck('rm_date', 'MAINTENANCE', 'Date column parseable',
-        bad < rows.length * 0.05 ? 'warning' : 'error',
-        `${bad} unparseable date values out of ${rows.length}`);
+    if (badEntryNo === 0) {
+      addCheck('entry_no', SHEET, 'Entry No. valid', 'pass',
+        `All ${rows.length} rows have a valid Entry No.`);
+    } else if (badEntryNo < rows.length * 0.05) {
+      addCheck('entry_no', SHEET, 'Entry No. valid', 'warning',
+        `${badEntryNo} row(s) with invalid Entry No. out of ${rows.length}`);
     } else {
-      addCheck('rm_date', 'MAINTENANCE', 'Date column parseable', 'pass', `All ${rows.length} dates valid`);
+      addCheck('entry_no', SHEET, 'Entry No. valid', 'error',
+        `${badEntryNo} row(s) with invalid Entry No. out of ${rows.length}`);
     }
 
-    // 4. Cost numeric
-    let badCost = 0;
+    // 3. Debit Amount (LCY) — non-null/non-empty and finite number
+    let badDebit = 0;
     for (const r of rows) {
-      const c = safeFloat(r['Cost'], null);
-      if (c === null || (typeof c === 'number' && isNaN(c))) badCost++;
+      const raw = r['Debit Amount (LCY)'];
+      if (raw === null || raw === undefined || raw === '') { badDebit++; continue; }
+      const v = Number(raw);
+      if (!isFinite(v)) badDebit++;
     }
-    if (badCost > 0) {
-      addCheck('rm_cost', 'MAINTENANCE', 'Cost column numeric',
-        badCost < rows.length * 0.05 ? 'warning' : 'error',
-        `${badCost} non-numeric Cost values out of ${rows.length}`);
+    if (badDebit === 0) {
+      addCheck('debit', SHEET, 'Debit Amount (LCY) valid', 'pass',
+        `All ${rows.length} rows have a valid debit amount`);
+    } else if (badDebit < rows.length * 0.05) {
+      addCheck('debit', SHEET, 'Debit Amount (LCY) valid', 'warning',
+        `${badDebit} row(s) with invalid Debit Amount (LCY) out of ${rows.length}`);
     } else {
-      addCheck('rm_cost', 'MAINTENANCE', 'Cost column numeric', 'pass', `All ${rows.length} costs numeric`);
+      addCheck('debit', SHEET, 'Debit Amount (LCY) valid', 'error',
+        `${badDebit} row(s) with invalid Debit Amount (LCY) out of ${rows.length}`);
     }
 
-    // 5. Site coverage vs DB
+    // 4. Site codes vs DB
+    const siteCodesInFile = Array.from(
+      new Set(rows.map(r => String(r['SITE CODE'] ?? '').trim().toUpperCase()).filter(Boolean))
+    );
     try {
-      const dbRows = await query<{ site_code: string; budget_name: string }>(
-        'SELECT site_code, UPPER(budget_name) AS budget_name FROM sites'
-      );
-      const nameToCode = new Map(dbRows.map(r => [r.budget_name, r.site_code]));
-      const unknownNames = new Set<string>();
-      let matched = 0;
-      for (const r of rows) {
-        const name = safeStr(r['Site'])?.toUpperCase();
-        if (!name) continue;
-        if (nameToCode.has(name)) matched++;
-        else unknownNames.add(name);
-      }
-      if (unknownNames.size > 0) {
-        addCheck('rm_sites', 'MAINTENANCE', 'Sites matched to DB', 'warning',
-          `${matched} matched, ${unknownNames.size} unknown (will go to Unmatched Rows): ${Array.from(unknownNames).slice(0, 10).join(', ')}`);
+      const dbRows = await query<{ site_code: string }>('SELECT site_code FROM sites');
+      const known = new Set(dbRows.map(r => r.site_code));
+      const unknown = siteCodesInFile.filter(c => !known.has(c));
+      if (unknown.length === 0) {
+        addCheck('site_codes', SHEET, 'Site codes matched to DB', 'pass',
+          `All ${siteCodesInFile.length} site code(s) recognised`);
       } else {
-        addCheck('rm_sites', 'MAINTENANCE', 'Sites matched to DB', 'pass', `All ${matched} site names recognised`);
+        addCheck('site_codes', SHEET, 'Site codes matched to DB', 'warning',
+          `${unknown.length} unknown site code(s): ${unknown.slice(0, 5).join(', ')}`);
       }
     } catch {
       // DB unreachable — skip site check
     }
 
-    const dateRange = minD && maxD ? { from: minD, to: maxD } : null;
-    const canIngest = summary.errors === 0;
-    return NextResponse.json({ ok: canIngest, canIngest, checks, summary, dateRange, fileName });
+    const errors = summary.errors;
+    const warnings = summary.warnings;
+    const passed = summary.passed;
+    const canIngest = errors === 0;
+
+    return NextResponse.json({
+      data: {
+        ok: canIngest,
+        canIngest,
+        checks,
+        summary: { errors, warnings, passed },
+        sheetRowCounts: { [SHEET]: rows.length },
+        dateRange: null,
+        fileName,
+      },
+    });
   } catch (err: any) {
     console.error('/api/validate (maintenance) error:', err);
     return NextResponse.json({
