@@ -101,8 +101,21 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Vercel cron uses GET. Treat it as POST with no body.
-export async function GET() {
+// Vercel cron uses GET. Require Bearer CRON_SECRET so only the scheduled
+// job (and ops with the secret) can trigger AI categorization — the POST
+// path stays open for the in-dashboard client loop.
+export async function GET(req: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return NextResponse.json(
+      { error: 'CRON_SECRET not configured' },
+      { status: 503 },
+    );
+  }
+  const auth = req.headers.get('authorization');
+  if (auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const fakeReq = { json: async () => ({}) } as any;
   return POST(fakeReq);
 }

@@ -755,17 +755,28 @@ async function ingestMaintenance(body: any): Promise<NextResponse> {
   const startMs = Date.now();
   const rows: Record<string, any>[] = Array.isArray(body?.rows) ? body.rows : [];
   const fileName: string = body?.fileName || 'maintenance.xlsx';
+  // Chunked-upload protocol: client sends rows in 2000-row chunks, passing
+  // uploadLogId between calls so they share one upload_log row. `final`
+  // signals the last chunk so we mark the log success only once.
+  const incomingLogId: number | null =
+    typeof body?.uploadLogId === 'number' ? body.uploadLogId : null;
+  const isFinal: boolean = body?.final !== false;
   if (rows.length === 0) {
     return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
   }
 
-  // upload_log row
-  const logRow = await query<{ id: number }>(
-    `INSERT INTO upload_log (file_name, file_size_bytes, status)
-     VALUES ($1, $2, 'pending') RETURNING id`,
-    [fileName, 0],
-  );
-  const uploadId = logRow[0].id;
+  // Reuse the upload_log row across chunks; create one on the first chunk.
+  let uploadId: number;
+  if (incomingLogId) {
+    uploadId = incomingLogId;
+  } else {
+    const logRow = await query<{ id: number }>(
+      `INSERT INTO upload_log (file_name, file_size_bytes, status)
+       VALUES ($1, $2, 'pending') RETURNING id`,
+      [fileName, 0],
+    );
+    uploadId = logRow[0].id;
+  }
 
   try {
     // 1. Parse all rows
@@ -838,8 +849,9 @@ async function ingestMaintenance(body: any): Promise<NextResponse> {
     );
     const pendingInserted = placeholderRes.length;
 
-    // 6. Bookkeeping
-    const summary = {
+    // 6. Bookkeeping — accumulate counts across chunks. Chunks are sent
+    //    sequentially by the client, so a read-merge-write is safe here.
+    const chunkSummary = {
       total: rows.length,
       inserted,
       unmatched: unmatched.length,
@@ -850,15 +862,48 @@ async function ingestMaintenance(body: any): Promise<NextResponse> {
       pending_descriptions: pendingInserted,
       data_type: 'rm_finance',
     };
+
+    const priorRow = await query<{ row_counts: any; duration_ms: number | null }>(
+      `SELECT row_counts, duration_ms FROM upload_log WHERE id = $1`,
+      [uploadId],
+    );
+    const prior = (priorRow[0]?.row_counts as Record<string, any>) || {};
+    const priorReasons = (prior.skipped_reasons as Record<string, number>) || {};
+    const mergedReasons: Record<string, number> = { ...priorReasons };
+    for (const [k, v] of Object.entries(chunkSummary.skipped_reasons)) {
+      mergedReasons[k] = (mergedReasons[k] || 0) + v;
+    }
+    const mergedSummary = {
+      total:                (prior.total                || 0) + chunkSummary.total,
+      inserted:             (prior.inserted             || 0) + chunkSummary.inserted,
+      unmatched:            (prior.unmatched            || 0) + chunkSummary.unmatched,
+      skipped:              (prior.skipped              || 0) + chunkSummary.skipped,
+      skipped_reasons:      mergedReasons,
+      pending_descriptions: (prior.pending_descriptions || 0) + chunkSummary.pending_descriptions,
+      data_type:            'rm_finance',
+    };
+    const cumulativeMs = (priorRow[0]?.duration_ms || 0) + (Date.now() - startMs);
+
     await query(
-      `UPDATE upload_log SET status='success', row_counts=$1, duration_ms=$2 WHERE id=$3`,
-      [JSON.stringify(summary), Date.now() - startMs, uploadId],
+      `UPDATE upload_log
+          SET status      = $1,
+              row_counts  = $2,
+              duration_ms = $3
+        WHERE id = $4`,
+      [
+        isFinal ? 'success' : 'pending',
+        JSON.stringify(mergedSummary),
+        cumulativeMs,
+        uploadId,
+      ],
     );
 
     return NextResponse.json({
       ok: true,
       uploadLogId: uploadId,
-      summary,
+      summary: chunkSummary,
+      cumulative: mergedSummary,
+      final: isFinal,
     });
   } catch (err: any) {
     console.error('/api/ingest (rm_finance) error:', err);
