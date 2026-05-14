@@ -452,16 +452,16 @@ async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
     const passed = summary.passed;
     const canIngest = errors === 0;
 
+    // Return at root to match the sales validate response shape — the
+    // UploadPanel spreads the body directly into validation state.
     return NextResponse.json({
-      data: {
-        ok: canIngest,
-        canIngest,
-        checks,
-        summary: { errors, warnings, passed },
-        sheetRowCounts: { [SHEET]: rows.length },
-        dateRange,
-        fileName,
-      },
+      ok: canIngest,
+      canIngest,
+      checks,
+      summary: { errors, warnings, passed },
+      sheetRowCounts: { [SHEET]: rows.length },
+      dateRange,
+      fileName,
     });
   } catch (err: any) {
     console.error('/api/validate (maintenance) error:', err);
