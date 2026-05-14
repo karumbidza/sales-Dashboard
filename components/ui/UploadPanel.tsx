@@ -172,12 +172,17 @@ export default function UploadPanel({ onSuccess }: Props) {
     uploadLogId: number | null;
     pending: number;
   }>(null);
+  const [ingestProgress, setIngestProgress] = useState<null | {
+    current: number;
+    total: number;
+  }>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setFile(null); setParsed(null); setParsing(false); setPeriod(''); setPhase('idle');
     setValidation(null); setPreflight(null); setRowCounts(null); setDuration(null);
     setIngestLog(''); setErrorMsg('');
+    setIngestProgress(null); setCategorizing(null);
     delete (window as any).__rmParsedRows;
     if (inputRef.current) inputRef.current.value = '';
   };
@@ -444,22 +449,38 @@ export default function UploadPanel({ onSuccess }: Props) {
           throw new Error('No parsed R&M rows available — please re-validate');
         }
 
-        const { data } = await postJSON('/api/ingest', {
-          dataType: 'maintenance',
-          rows,
-          fileName: file.name,
-        });
+        // Chunked upload — stay under Vercel's 4.5MB JSON body limit.
+        // Server reuses uploadLogId across chunks and finalizes on `final: true`.
+        const CHUNK_SIZE = 2000;
+        const totalChunks = Math.max(1, Math.ceil(rows.length / CHUNK_SIZE));
+        let logId: number | null = null;
+        let cumulative: any = null;
 
-        if (!data.ok) {
-          throw new Error(data.error || 'R&M ingest failed');
+        for (let i = 0; i < totalChunks; i++) {
+          const chunk = rows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          const isFinal = i === totalChunks - 1;
+          setIngestProgress({ current: i + 1, total: totalChunks });
+
+          const { data } = await postJSON('/api/ingest', {
+            dataType: 'maintenance',
+            rows: chunk,
+            fileName: file.name,
+            uploadLogId: logId,
+            final: isFinal,
+          });
+          if (!data.ok) throw new Error(data.error || 'R&M ingest failed');
+
+          logId = data.uploadLogId ?? logId;
+          cumulative = data.cumulative ?? cumulative;
         }
 
+        setIngestProgress(null);
         setDuration(Date.now() - start);
-        setRowCounts({ maintenance: data.summary?.inserted || 0 } as any);
+        setRowCounts({ maintenance: cumulative?.inserted || 0 } as any);
 
-        const pending = Number(data.summary?.pending_descriptions || 0);
+        const pending = Number(cumulative?.pending_descriptions || 0);
         if (pending > 0) {
-          setCategorizing({ uploadLogId: data.uploadLogId ?? null, pending });
+          setCategorizing({ uploadLogId: logId, pending });
         } else {
           setPhase('done');
           onSuccess();
@@ -774,7 +795,9 @@ export default function UploadPanel({ onSuccess }: Props) {
       {phase === 'ingesting' && (
         <div className="flex items-center justify-center gap-2 h-9 text-sm text-gray-500">
           <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          Ingesting data — this may take up to 60 seconds…
+          {ingestProgress && ingestProgress.total > 1
+            ? `Uploading chunk ${ingestProgress.current} of ${ingestProgress.total}…`
+            : 'Ingesting data — this may take up to 60 seconds…'}
         </div>
       )}
 
