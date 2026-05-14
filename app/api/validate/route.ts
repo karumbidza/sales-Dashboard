@@ -6,6 +6,15 @@ import {
   parseExcelBuffer, compactToSheets, safeStr, siteCode, parseBudgetMonthCol, parseDate,
   safeFloat, parseDateDayFirst,
 } from '@/lib/xlsx-parse';
+import { parseRMFinanceRows, ParseReason } from '@/lib/rm-finance-parse';
+
+const SKIP_REASON_LABEL: Record<ParseReason, string> = {
+  missing_entry_no:    'Missing or invalid Entry No.',
+  missing_site_code:   'Missing SITE CODE',
+  bad_date:            'Unparseable DATE',
+  bad_debit:           'Missing or invalid Debit Amount (LCY)',
+  missing_description: 'Missing Description',
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -382,43 +391,44 @@ async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
         `All ${MAINT_REQUIRED_COLS.length} required columns present`);
     }
 
-    // 2. Entry No. — must be finite and > 0
-    let badEntryNo = 0;
-    for (const r of rows) {
-      const v = Number(r['Entry No.']);
-      if (!isFinite(v) || v <= 0) badEntryNo++;
-    }
-    if (badEntryNo === 0) {
-      addCheck('entry_no', SHEET, 'Entry No. valid', 'pass',
-        `All ${rows.length} rows have a valid Entry No.`);
-    } else if (badEntryNo < rows.length * 0.05) {
-      addCheck('entry_no', SHEET, 'Entry No. valid', 'warning',
-        `${badEntryNo} row(s) with invalid Entry No. out of ${rows.length}`);
+    // 2. Parse-based skip diagnostics — same rules ingest will apply.
+    //    Group skipped rows by reason so users see exactly what to fix.
+    const { parsed, skipped } = parseRMFinanceRows(rows);
+    const skipsByReason = skipped.reduce<Record<string, number>>((acc, s) => {
+      acc[s.reason] = (acc[s.reason] || 0) + 1; return acc;
+    }, {});
+    const totalSkipped = skipped.length;
+
+    if (totalSkipped === 0) {
+      addCheck('parseable', SHEET, 'Rows parseable for ingest', 'pass',
+        `All ${rows.length} rows parse cleanly`);
     } else {
-      addCheck('entry_no', SHEET, 'Entry No. valid', 'error',
-        `${badEntryNo} row(s) with invalid Entry No. out of ${rows.length}`);
+      const ratio = rows.length > 0 ? totalSkipped / rows.length : 0;
+      const status: Check['status'] = ratio >= 0.05 ? 'error' : 'warning';
+      const breakdown = Object.entries(skipsByReason)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, n]) => `${n} ${SKIP_REASON_LABEL[k as ParseReason] || k}`)
+        .join('; ');
+      addCheck('parseable', SHEET, 'Rows parseable for ingest', status,
+        `${totalSkipped} of ${rows.length} row(s) will be skipped: ${breakdown}`);
     }
 
-    // 3. Debit Amount (LCY) — non-null/non-empty and finite number
-    let badDebit = 0;
-    for (const r of rows) {
-      const raw = r['Debit Amount (LCY)'];
-      if (raw === null || raw === undefined || raw === '') { badDebit++; continue; }
-      const v = Number(raw);
-      if (!isFinite(v)) badDebit++;
-    }
-    if (badDebit === 0) {
-      addCheck('debit', SHEET, 'Debit Amount (LCY) valid', 'pass',
-        `All ${rows.length} rows have a valid debit amount`);
-    } else if (badDebit < rows.length * 0.05) {
-      addCheck('debit', SHEET, 'Debit Amount (LCY) valid', 'warning',
-        `${badDebit} row(s) with invalid Debit Amount (LCY) out of ${rows.length}`);
-    } else {
-      addCheck('debit', SHEET, 'Debit Amount (LCY) valid', 'error',
-        `${badDebit} row(s) with invalid Debit Amount (LCY) out of ${rows.length}`);
+    // Date range from successfully parsed rows (useful confirmation for users).
+    let dateRange: { from: string; to: string } | null = null;
+    if (parsed.length > 0) {
+      let minD: string | null = null;
+      let maxD: string | null = null;
+      for (const p of parsed) {
+        if (!minD || p.service_date < minD) minD = p.service_date;
+        if (!maxD || p.service_date > maxD) maxD = p.service_date;
+      }
+      if (minD && maxD) {
+        dateRange = { from: minD, to: maxD };
+        addCheck('date_range', SHEET, 'Date range detected', 'pass', `${minD} → ${maxD}`);
+      }
     }
 
-    // 4. Site codes vs DB
+    // 3. Site codes vs DB
     const siteCodesInFile = Array.from(
       new Set(rows.map(r => String(r['SITE CODE'] ?? '').trim().toUpperCase()).filter(Boolean))
     );
@@ -449,7 +459,7 @@ async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
         checks,
         summary: { errors, warnings, passed },
         sheetRowCounts: { [SHEET]: rows.length },
-        dateRange: null,
+        dateRange,
         fileName,
       },
     });
