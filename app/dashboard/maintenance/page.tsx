@@ -47,7 +47,7 @@ export default function MaintenancePage() {
   const [trend, setTrend]     = useState<any[]>([]);
   const [cats, setCats]       = useState<any[]>([]);
   const [sites, setSites]     = useState<MaintSiteRow[]>([]);
-  const [allCategories, setAllCategories] = useState<string[]>([]);
+  const [allCategories, setAllCategories] = useState<{ slug: string; displayName: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState<{ filters: InvoiceFilters; title?: string } | null>(null);
 
@@ -159,7 +159,9 @@ export default function MaintenancePage() {
                     onChange={e => setFilters(f => ({ ...f, category: e.target.value }))}
                     className="text-sm border rounded px-2 py-1">
               <option value="">All categories</option>
-              {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              {allCategories.map(c => (
+                <option key={c.slug} value={c.slug}>{c.displayName}</option>
+              ))}
             </select>
           </div>
           <button
