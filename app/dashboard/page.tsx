@@ -239,6 +239,12 @@ export default function DashboardPage() {
           >
             Maintenance
           </Link>
+          <Link
+            href="/dashboard/helpdesk"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all"
+          >
+            Helpdesk
+          </Link>
         </div>
       </header>
 
