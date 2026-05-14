@@ -23,7 +23,16 @@ export async function GET() {
        ORDER BY LENGTH(r.pattern) DESC, r.id
     `);
 
+    const otherRows = await query<{ n: string }>(`
+      SELECT COUNT(*)::TEXT AS n
+        FROM rm_description_categories
+       WHERE source = 'ai'
+         AND category_id = (SELECT id FROM rm_categories WHERE slug = 'other')
+    `);
+    const otherCount = parseInt(otherRows[0]?.n || '0', 10);
+
     return NextResponse.json({
+      otherCount,
       data: rows.map(r => ({
         id:           r.id,
         pattern:      r.pattern,

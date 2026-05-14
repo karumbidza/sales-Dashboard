@@ -5,7 +5,7 @@ import { categorizeBatch, CategorizerClient, CATEGORY_SLUGS } from './categorize
 
 function mockClient(canned: { id: number; category: string; confidence: string }[]): CategorizerClient {
   return {
-    async classify(items) {
+    async classify(items, _systemPrompt) {
       // Return canned data ignoring the actual input (caller supplies matching ids).
       return { results: canned } as any;
     },
@@ -14,7 +14,7 @@ function mockClient(canned: { id: number; category: string; confidence: string }
 
 test('high confidence: writes category and confidence verbatim', async () => {
   const client = mockClient([{ id: 1, category: 'plumbing_water_waste', confidence: 'high' }]);
-  const out = await categorizeBatch(client, [{ id: 1, description: 'Repaired urinal leak' }]);
+  const out = await categorizeBatch(client, [{ id: 1, description: 'Repaired urinal leak' }], 'test-prompt');
   assert.deepEqual(out, [
     { id: 1, slug: 'plumbing_water_waste', confidence: 'high', needs_review: false },
   ]);
@@ -22,29 +22,29 @@ test('high confidence: writes category and confidence verbatim', async () => {
 
 test('medium confidence: needs_review = false', async () => {
   const client = mockClient([{ id: 1, category: 'plumbing_water_waste', confidence: 'medium' }]);
-  const out = await categorizeBatch(client, [{ id: 1, description: 'works' }]);
+  const out = await categorizeBatch(client, [{ id: 1, description: 'works' }], 'test-prompt');
   assert.equal(out[0].needs_review, false);
 });
 
 test('low confidence: needs_review = true', async () => {
   const client = mockClient([{ id: 1, category: 'plumbing_water_waste', confidence: 'low' }]);
-  const out = await categorizeBatch(client, [{ id: 1, description: 'works' }]);
+  const out = await categorizeBatch(client, [{ id: 1, description: 'works' }], 'test-prompt');
   assert.equal(out[0].needs_review, true);
 });
 
 test('unknown category slug from model → falls back to other + needs_review', async () => {
   const client = mockClient([{ id: 1, category: 'nonexistent_bucket', confidence: 'high' }]);
-  const out = await categorizeBatch(client, [{ id: 1, description: 'x' }]);
+  const out = await categorizeBatch(client, [{ id: 1, description: 'x' }], 'test-prompt');
   assert.equal(out[0].slug, 'other');
   assert.equal(out[0].needs_review, true);
 });
 
 test('client error propagates', async () => {
   const client: CategorizerClient = {
-    async classify() { throw new Error('rate_limit'); },
+    async classify(_items, _systemPrompt) { throw new Error('rate_limit'); },
   };
   await assert.rejects(
-    () => categorizeBatch(client, [{ id: 1, description: 'x' }]),
+    () => categorizeBatch(client, [{ id: 1, description: 'x' }], 'test-prompt'),
     /rate_limit/,
   );
 });
@@ -64,7 +64,7 @@ test('missing id in model response → falls back to other + needs_review for th
   const out = await categorizeBatch(client, [
     { id: 1, description: 'a' },
     { id: 2, description: 'b' },
-  ]);
+  ], 'test-prompt');
   assert.equal(out.length, 2);
   assert.equal(out[1].slug, 'other');
   assert.equal(out[1].needs_review, true);

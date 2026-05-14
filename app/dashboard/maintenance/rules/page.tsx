@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import CategorizationProgress from '@/components/maintenance/CategorizationProgress';
 
 interface Rule {
   id:           number;
@@ -24,6 +25,8 @@ function RulesPageInner() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
+  const [otherCount,    setOtherCount]    = useState(0);
+  const [recategorizing, setRecategorizing] = useState<null | { pending: number }>(null);
 
   // Prefill from query params (used by InvoiceDrawer "Make this a rule?" link).
   const [newPattern, setNewPattern] = useState(sp.get('pattern')       ?? '');
@@ -38,6 +41,7 @@ function RulesPageInner() {
         fetch('/api/maintenance/categories-list').then(r => r.json()),
       ]);
       setRules(rRes?.data || []);
+      setOtherCount(rRes?.otherCount || 0);
       setCats(cRes?.data || []);
     } catch (e: any) {
       setError(e.message || 'load failed');
@@ -94,6 +98,23 @@ function RulesPageInner() {
       return;
     }
     await refetch();
+  };
+
+  const recategorizeOther = async () => {
+    const ok = window.confirm(
+      `Re-categorize ${otherCount.toLocaleString()} descriptions currently in "Other"?\n\n` +
+      `This will re-run the AI with the smarter prompt and your rules/overrides. ` +
+      `Estimated cost: $0.50–$1 in Claude API.`,
+    );
+    if (!ok) return;
+    const res = await fetch('/api/maintenance/recategorize-other', { method: 'POST' });
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      setError(b.error || 'recategorize failed');
+      return;
+    }
+    const { flipped } = await res.json();
+    setRecategorizing({ pending: flipped });
   };
 
   return (
@@ -196,6 +217,46 @@ function RulesPageInner() {
             </table>
           )}
         </div>
+
+        {/* Re-categorize Other panel — appears when the AI has stranded
+            descriptions in 'other'. After the user authors more rules, this
+            panel lets them re-run the AI with the new context. */}
+        {!loading && otherCount > 0 && !recategorizing && (
+          <div className="card mt-4 border border-amber-200 bg-amber-50">
+            <div className="flex items-start gap-3">
+              <span className="text-amber-700">⚠</span>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-amber-900">
+                  {otherCount.toLocaleString()} description{otherCount === 1 ? '' : 's'} currently in &ldquo;Other&rdquo;
+                </h3>
+                <p className="text-xs text-amber-800 mt-1">
+                  The AI couldn&apos;t pick a category for these. Re-running with the smarter prompt and your
+                  rules/overrides should categorise most of them. Estimated cost: $0.50–$1.
+                </p>
+                <button
+                  onClick={recategorizeOther}
+                  className="mt-3 rounded bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  Re-categorize {otherCount.toLocaleString()} description{otherCount === 1 ? '' : 's'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {recategorizing && (
+          <div className="card mt-4">
+            <h3 className="text-sm font-semibold mb-2">Re-categorizing…</h3>
+            <CategorizationProgress
+              uploadLogId={null}
+              pendingAtStart={recategorizing.pending}
+              onDone={() => {
+                setRecategorizing(null);
+                refetch();
+              }}
+            />
+          </div>
+        )}
       </main>
     </div>
   );

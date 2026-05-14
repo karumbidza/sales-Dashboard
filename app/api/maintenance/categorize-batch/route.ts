@@ -6,7 +6,9 @@ import {
   createClaudeClient,
   CategorizerClient,
   CLAUDE_MODEL,
+  buildSystemPrompt,
 } from '@/lib/categorizer';
+import { loadFewShotExamples } from '@/lib/categorizer-examples';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,9 +45,13 @@ export async function POST(req: NextRequest) {
     }
 
     const client = getClient();
+    const examples = await loadFewShotExamples();
+    const systemPrompt = buildSystemPrompt(examples);
+
     const verdicts = await categorizeBatch(
       client,
       pending.map(p => ({ id: p.id, description: p.description_norm })),
+      systemPrompt,
     );
 
     // UPDATE one row at a time, but in a single transaction.
