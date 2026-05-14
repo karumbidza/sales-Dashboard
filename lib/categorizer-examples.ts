@@ -16,7 +16,7 @@ export async function loadFewShotExamples(perCategory = 3): Promise<FewShotMap> 
       JOIN rm_categories c ON rdc.category_id = c.id
      WHERE rdc.source IN ('rule', 'override')
        AND c.slug != 'other'
-     ORDER BY random()
+     ORDER BY c.slug, rdc.id
      LIMIT 200
   `);
 

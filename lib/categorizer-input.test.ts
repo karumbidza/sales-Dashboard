@@ -48,3 +48,13 @@ test('strips ticket and order references mid-string', () => {
 test('collapses runs of whitespace and trims', () => {
   assert.equal(cleanForAI('   foo \t\n bar   '), 'foo bar');
 });
+
+test('returns empty string when cleaning reduces a non-empty input to nothing', () => {
+  // 'tkt#1234' → leading site-prefix pattern strips this if followed by space,
+  // but standalone it does not match. The standalone ticket reference does:
+  //   regex 2 strips 'tkt#1234' → ''
+  // Then whitespace collapse leaves ''. Call site (categorizer.ts) falls back
+  // to the original via `cleanForAI(d) || d`.
+  assert.equal(cleanForAI('tkt# 1234'), '');
+  assert.equal(cleanForAI('TICKET 9999'), '');
+});
