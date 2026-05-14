@@ -2,6 +2,9 @@
 // Claude-backed classifier for R&M invoice descriptions.
 // Returns one verdict per input id, even when the model omits one.
 
+import type { FewShotMap } from './categorizer-examples';
+import { cleanForAI } from './categorizer-input';
+
 export const CATEGORY_SLUGS = [
   'pumps_dispensers',
   'compressors_air',
@@ -30,33 +33,72 @@ export interface ClassifyResponse {
 }
 
 export interface CategorizerClient {
-  classify(items: CategorizerInput[]): Promise<ClassifyResponse>;
+  classify(items: CategorizerInput[], systemPrompt: string): Promise<ClassifyResponse>;
 }
 
-const SYSTEM_PROMPT = `You categorize R&M (repairs & maintenance) invoice descriptions for a
-fuel-station retail business in Zimbabwe. You will receive a list of
-descriptions and must assign each to exactly ONE of these categories:
+// Static base — the category list.
+const BASE_PROMPT = `You categorize R&M (repairs & maintenance) invoice
+descriptions for a fuel-station retail business in Zimbabwe. You will
+receive a list of descriptions and must assign each to exactly ONE of
+these categories.
 
-  pumps_dispensers       — Dispensers, fuel nozzles, hoses, STP, shear/breakaway valves
-  compressors_air        — Air compressors, compressor motors, pressure gauges, V-belts
-  tanks_lines            — Underground tanks, fuel lines, manholes, ATG, dipsticks, bunding, line testing
-  generators             — Gensets, generator service & repair
-  solar_ups              — Solar panels, inverters, batteries, UPS
-  electrical_lighting    — Wiring, sockets, fault clearing, isolators, canopy/forecourt/flood/LED/fluorescent lights
-  plumbing_water_waste   — Leaks, toilets, urinals, sinks, sprinklers, liquid-waste disposal, boreholes
-  building_civil         — Paint, roof, doors, windows, tiles, paving, potholes, locksets, safes, HVAC
-  canopy_signage         — Canopy structure, signage, illumination, display boards
-  landscaping_grounds    — Garden, grass, trees, hedging
-  fire_safety            — Extinguishers, fire equipment
-  security_cctv          — CCTV, alarms, fences, gates
-  other                  — Use ONLY if no category above plausibly fits.
+CATEGORIES:
+  pumps_dispensers     — Dispensers, fuel nozzles, hoses, STP, shear/breakaway valves
+  compressors_air      — Air compressors, compressor motors, pressure gauges, V-belts
+  tanks_lines          — Underground tanks, fuel lines, manholes, ATG, dipsticks, bunding, line testing, oil separators
+  generators           — Gensets, generator service & repair
+  solar_ups            — Solar panels, inverters, batteries, UPS
+  electrical_lighting  — Wiring, sockets, fault clearing, isolators, day-night switches, lights, cabling
+  plumbing_water_waste — Leaks, toilets, urinals, sinks, sprinklers, waste disposal, boreholes, drainage
+  building_civil       — Paint, roof, doors, windows, tiles, paving, locksets, safes, HVAC, strongroom doors
+  canopy_signage       — Canopy structure, signage, illumination, display boards
+  landscaping_grounds  — Garden, grass, trees, hedging
+  fire_safety          — Extinguishers, fire equipment
+  security_cctv        — CCTV, alarms, fences, gates
+  other                — TRULY no fit. Use sparingly.`;
 
-Also rate your confidence: "high" | "medium" | "low".
-- high   = description directly names something in the category
-- medium = strong implication from context
-- low    = guess; surface for human review
+// Domain terminology unique to Zimbabwean fuel-station maintenance.
+// The model does not know these out-of-the-box.
+const GLOSSARY = `DOMAIN GLOSSARY (Zimbabwean fuel-station terminology):
+  ZVA          — automatic nozzle type → pumps_dispensers
+  breakaway    — emergency disconnect on dispenser hose → pumps_dispensers
+  swivel       — rotating hose fitting → pumps_dispensers
+  grip lock    — anti-theft nozzle clip → pumps_dispensers
+  STP / submersible — fuel tank pump → tanks_lines
+  ATG          — automatic tank gauge → tanks_lines
+  soakway      — drainage pit → plumbing_water_waste
+  oil separator — wastewater treatment → tanks_lines
+  bunding      — concrete containment around tanks → tanks_lines
+  day-night switch — photocell light switch → electrical_lighting
+  canopy       — overhead roof at fuel pumps → canopy_signage
+  forecourt    — open service area (context only, not a category)`;
 
-Return strict JSON via the provided tool. No prose.`;
+// Final instructions block — explicit anti-other bias.
+const INSTRUCTIONS = `INSTRUCTIONS:
+1. Look for keywords matching the glossary or category descriptions above.
+2. Pick the BEST match. Only use 'other' if NO category fits — even loosely.
+3. Rate confidence:
+   - high: description directly names something in the category
+   - medium: strong implication from context
+   - low: an educated guess; surface for human review
+
+Return strict JSON via the categorize tool. No prose.`;
+
+export function buildSystemPrompt(examples: FewShotMap): string {
+  const exampleSections = Object.entries(examples)
+    .filter(([, descs]) => descs.length > 0)
+    .map(([slug, descs]) => {
+      const lines = descs.map(d => `  - "${d}"`).join('\n');
+      return `${slug}:\n${lines}`;
+    })
+    .join('\n\n');
+
+  const examplesBlock = exampleSections
+    ? `EXAMPLES OF CORRECT CATEGORIZATION (from past invoices):\n\n${exampleSections}\n\n`
+    : '';
+
+  return `${BASE_PROMPT}\n\n${GLOSSARY}\n\n${examplesBlock}${INSTRUCTIONS}`;
+}
 
 const TOOL = {
   name: 'categorize',
@@ -86,8 +128,9 @@ export const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 export async function categorizeBatch(
   client: CategorizerClient,
   items: CategorizerInput[],
+  systemPrompt: string,
 ): Promise<CategorizerOutput[]> {
-  const resp = await client.classify(items);
+  const resp = await client.classify(items, systemPrompt);
   const byId = new Map<number, { category: string; confidence: string }>();
   for (const r of resp.results ?? []) byId.set(r.id, r);
 
@@ -119,18 +162,25 @@ export function createClaudeClient(apiKey: string): CategorizerClient {
   const sdk = new Anthropic({ apiKey });
 
   return {
-    async classify(items) {
+    async classify(items, systemPrompt) {
+      // Send the cleaned description to Claude; keep the original id mapping.
+      // If cleanForAI empties a description, fall back to the original.
+      const cleanedItems = items.map(it => ({
+        id: it.id,
+        description: cleanForAI(it.description) || it.description,
+      }));
+
       const resp = await sdk.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 4000,
         system: [
-          { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
         ],
         tools: [TOOL],
         tool_choice: { type: 'tool', name: 'categorize' },
         messages: [{
           role: 'user',
-          content: JSON.stringify(items),
+          content: JSON.stringify(cleanedItems),
         }],
       });
       const block = (resp.content as any[]).find(b => b.type === 'tool_use' && b.name === 'categorize');
