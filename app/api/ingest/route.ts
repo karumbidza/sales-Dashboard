@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { parseRMFinanceRows } from '@/lib/rm-finance-parse';
+import { APPLY_RULES_SQL } from '@/lib/rm-rules';
 import {
   parseExcelBuffer, compactToSheets, safeFloat, safeStr, siteCode,
   parseBudgetMonthCol, parseDate, parseDateDayFirst,
@@ -848,6 +849,11 @@ async function ingestMaintenance(body: any): Promise<NextResponse> {
        RETURNING 1`,
     );
     const pendingInserted = placeholderRes.length;
+
+    // 5b. Apply any active keyword rules to the newly-inserted placeholders
+    //     so the cron has less work to do and rule-matched rows show up
+    //     immediately on the dashboard.
+    await query(APPLY_RULES_SQL).catch(e => console.warn('rule apply failed:', e));
 
     // 6. Bookkeeping — accumulate counts across chunks. Chunks are sent
     //    sequentially by the client, so a read-merge-write is safe here.
