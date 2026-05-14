@@ -123,12 +123,12 @@ export default function MaintenancePage() {
           </div>
         </div>
 
-        {/* Tab strip — Link tabs cross-route back to dashboard */}
+        {/* Tab strip — Link tabs cross-route back to dashboard. Labels mirror
+            the Sales Dashboard header so navigation feels consistent. */}
         <div className="max-w-screen-2xl mx-auto px-6 flex gap-0.5">
-          <Link href="/dashboard"      className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Overview</Link>
-          <Link href="/dashboard"      className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Sites</Link>
-          <Link href="/dashboard"      className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Data Management</Link>
-          <span                        className="px-4 py-2 text-xs font-medium rounded-t-md bg-[#f4f6f9] text-[#1e3a5f]">Maintenance</span>
+          <Link href="/dashboard" className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Sales Dashboard</Link>
+          <Link href="/dashboard" className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Data Management</Link>
+          <span                   className="px-4 py-2 text-xs font-medium rounded-t-md bg-[#f4f6f9] text-[#1e3a5f]">Maintenance</span>
         </div>
       </header>
 
