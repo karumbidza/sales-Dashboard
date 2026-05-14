@@ -50,10 +50,13 @@ export async function PUT(req: NextRequest, ctx: { params: { id: string } }) {
     setClauses.push(`updated_at = NOW()`);
     params.push(id);
 
-    await query(
-      `UPDATE rm_keyword_rules SET ${setClauses.join(', ')} WHERE id = $${p}`,
+    const updated = await query<{ id: number }>(
+      `UPDATE rm_keyword_rules SET ${setClauses.join(', ')} WHERE id = $${p} RETURNING id`,
       params,
     );
+    if (updated.length === 0) {
+      return NextResponse.json({ error: 'rule not found' }, { status: 404 });
+    }
 
     // Re-apply (in case pattern/category/is_active changed) and reset
     // orphans (in case is_active flipped off and rows lost their rule).
@@ -64,6 +67,12 @@ export async function PUT(req: NextRequest, ctx: { params: { id: string } }) {
       orphans_reset: orphans.length,
     });
   } catch (err: any) {
+    // Setting a pattern that conflicts with an existing active rule, or
+    // re-activating a disabled rule that collides with an active one,
+    // both throw the same partial-unique-index violation.
+    if (err?.code === '23505') {
+      return NextResponse.json({ error: 'another active rule already uses this pattern' }, { status: 409 });
+    }
     console.error('/api/maintenance/rules/[id] PUT error:', err);
     return NextResponse.json({ error: err.message || 'update failed' }, { status: 500 });
   }
