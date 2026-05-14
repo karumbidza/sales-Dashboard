@@ -69,3 +69,16 @@ test('accepts Excel Date object as service_date', () => {
   const out = parseRMFinanceRow({ ...baseRow, 'DATE': new Date('2026-05-07T10:00:00Z') });
   assert.equal(out.row!.service_date, '2026-05-07');
 });
+
+test('accepts comma thousand-separator in Debit Amount (LCY)', () => {
+  // SheetJS with raw:false returns formatted strings; numbers may have commas.
+  const out = parseRMFinanceRow({ ...baseRow, 'Debit Amount (LCY)': '11,915.00' });
+  assert.ok(out.ok);
+  assert.equal(out.row!.debit_lcy, 11915);
+});
+
+test('accepts comma thousand-separator in Credit Amount (LCY)', () => {
+  const out = parseRMFinanceRow({ ...baseRow, 'Credit Amount (LCY)': '1,250.50' });
+  assert.ok(out.ok);
+  assert.equal(out.row!.credit_lcy, 1250.5);
+});

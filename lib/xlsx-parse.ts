@@ -8,7 +8,11 @@ import * as XLSX from 'xlsx';
 
 export function safeFloat(val: any, defaultVal: number | null = 0): number | null {
   if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return defaultVal;
-  const n = Number(val);
+  // Strings can arrive comma-formatted ("11,915.00") when SheetJS reads
+  // formatted cells with raw:false. Strip thousand-separator commas before
+  // parsing. Decimal point stays as `.` (Zimbabwe uses US-style formatting).
+  const raw = typeof val === 'string' ? val.replace(/,/g, '') : val;
+  const n = Number(raw);
   return isNaN(n) ? defaultVal : n;
 }
 
