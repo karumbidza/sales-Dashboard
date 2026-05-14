@@ -72,6 +72,11 @@ export async function POST(req: NextRequest) {
     const applied = await query<any>(APPLY_RULES_SQL);
     return NextResponse.json({ id: ins[0].id, applied_count: applied.length });
   } catch (err: any) {
+    // Race-safe duplicate detection — the partial unique index catches concurrent
+    // duplicate inserts that slip past the SELECT-then-INSERT pre-check.
+    if (err?.code === '23505') {
+      return NextResponse.json({ error: 'rule already exists for this pattern' }, { status: 409 });
+    }
     console.error('/api/maintenance/rules POST error:', err);
     return NextResponse.json({ error: err.message || 'create failed' }, { status: 500 });
   }
