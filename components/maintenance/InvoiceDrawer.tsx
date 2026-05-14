@@ -187,7 +187,18 @@ export default function InvoiceDrawer({ open, filters, title, onClose, onReclass
                         <span className="ml-2 inline-block rounded bg-amber-100 px-1 text-amber-800">needs review</span>
                       )}
                       {isModified && (
-                        <span className="ml-2 inline-block rounded bg-blue-100 px-1 text-blue-800">modified</span>
+                        <>
+                          <span className="ml-2 inline-block rounded bg-blue-100 px-1 text-blue-800">modified</span>
+                          <a
+                            href={`/dashboard/maintenance/rules?pattern=${encodeURIComponent(norm)}&category_slug=${encodeURIComponent(staged ?? '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-2 text-blue-600 hover:underline"
+                            title="Open the Rules page with this pattern prefilled"
+                          >
+                            Make this a rule?
+                          </a>
+                        </>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{r.netCost.toLocaleString()}</td>
