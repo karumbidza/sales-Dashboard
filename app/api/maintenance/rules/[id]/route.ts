@@ -68,3 +68,32 @@ export async function PUT(req: NextRequest, ctx: { params: { id: string } }) {
     return NextResponse.json({ error: err.message || 'update failed' }, { status: 500 });
   }
 }
+
+export async function DELETE(_req: NextRequest, ctx: { params: { id: string } }) {
+  try {
+    const id = parseInt(ctx.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return NextResponse.json({ error: 'invalid id' }, { status: 400 });
+    }
+
+    const del = await query<{ id: number }>(
+      `DELETE FROM rm_keyword_rules WHERE id = $1 RETURNING id`,
+      [id],
+    );
+    if (del.length === 0) {
+      return NextResponse.json({ error: 'rule not found' }, { status: 404 });
+    }
+
+    // Re-apply remaining rules (in case any other rule covers some of the
+    // descriptions this one matched), then reset whatever's left over.
+    const applied = await query<any>(APPLY_RULES_SQL);
+    const orphans = await query<any>(RESET_ORPHANS_SQL);
+    return NextResponse.json({
+      applied_count: applied.length,
+      orphans_reset: orphans.length,
+    });
+  } catch (err: any) {
+    console.error('/api/maintenance/rules/[id] DELETE error:', err);
+    return NextResponse.json({ error: err.message || 'delete failed' }, { status: 500 });
+  }
+}
