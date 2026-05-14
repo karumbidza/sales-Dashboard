@@ -8,6 +8,9 @@ node_modules/
 out/
 build/
 
+# TypeScript incremental build info
+tsconfig.tsbuildinfo
+
 # Environment files — NEVER commit these (contain secrets)
 .env
 .env.local
