@@ -7,6 +7,9 @@ import MaintenanceKPICards from '@/components/MaintenanceKPICards';
 import CategoryBreakdownChart from '@/components/charts/CategoryBreakdownChart';
 import MaintenanceSiteTable, { MaintSiteRow } from '@/components/tables/MaintenanceSiteTable';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import InvoiceDrawer, { InvoiceFilters } from '@/components/maintenance/InvoiceDrawer';
+import TopDescriptionsPanel from '@/components/maintenance/TopDescriptionsPanel';
+import AnomalyChips from '@/components/maintenance/AnomalyChips';
 
 interface MaintFilters {
   dateFrom: string;
@@ -46,6 +49,7 @@ export default function MaintenancePage() {
   const [sites, setSites]     = useState<MaintSiteRow[]>([]);
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [drawer, setDrawer] = useState<{ filters: InvoiceFilters; title?: string } | null>(null);
 
   const buildQS = (f: MaintFilters) => {
     const p = new URLSearchParams();
@@ -198,6 +202,24 @@ export default function MaintenancePage() {
         {!loading && hasData && (
           <div id="rm-export-root">
             <div className="mt-5">
+              <AnomalyChips
+                filters={{ dateFrom: filters.dateFrom, dateTo: filters.dateTo }}
+                needsReviewCount={kpis?.needsReviewCount || 0}
+                onClickAnomalies={() => setDrawer({
+                  filters: { dateFrom: filters.dateFrom, dateTo: filters.dateTo, territory: filters.territory },
+                  title: 'Anomalous invoices',
+                })}
+                onClickNeedsReview={() => setDrawer({
+                  filters: {
+                    dateFrom: filters.dateFrom, dateTo: filters.dateTo,
+                    territory: filters.territory, needsReview: true,
+                  },
+                  title: 'Invoices needing review',
+                })}
+              />
+            </div>
+
+            <div className="mt-5">
               <MaintenanceKPICards kpis={kpis} />
             </div>
 
@@ -219,10 +241,43 @@ export default function MaintenancePage() {
               <CategoryBreakdownChart data={cats} />
             </div>
 
+            <TopDescriptionsPanel
+              filters={{
+                dateFrom: filters.dateFrom, dateTo: filters.dateTo,
+                territory: filters.territory, category: filters.category,
+              }}
+              onPickDescription={(desc, label) => setDrawer({
+                filters: {
+                  description: desc,
+                  dateFrom: filters.dateFrom, dateTo: filters.dateTo,
+                  territory: filters.territory,
+                },
+                title: `Invoices: ${label}`,
+              })}
+            />
+
             <div className="card mt-5">
               <h2 className="text-sm font-semibold text-gray-800 mb-3">Site Ranking — Cost per Litre</h2>
-              <MaintenanceSiteTable data={sites} />
+              <MaintenanceSiteTable
+                data={sites}
+                onRowClick={(row) => setDrawer({
+                  filters: {
+                    siteCode: row.siteCode,
+                    dateFrom: filters.dateFrom, dateTo: filters.dateTo,
+                    territory: filters.territory, category: filters.category,
+                  },
+                  title: `Invoices: ${row.siteName}`,
+                })}
+              />
             </div>
+
+            <InvoiceDrawer
+              open={drawer != null}
+              filters={drawer?.filters || {}}
+              title={drawer?.title}
+              onClose={() => setDrawer(null)}
+              onReclassified={() => fetchAll(filters)}
+            />
           </div>
         )}
       </main>

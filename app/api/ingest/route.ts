@@ -2,6 +2,7 @@
 // Pure-TypeScript Excel ingestion — no Python dependency.
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { parseRMFinanceRows } from '@/lib/rm-finance-parse';
 import {
   parseExcelBuffer, compactToSheets, safeFloat, safeStr, siteCode,
   parseBudgetMonthCol, parseDate, parseDateDayFirst,
@@ -52,6 +53,22 @@ async function batchUpsert(sql: string, rows: any[][], batchSize = 200) {
     const params = batch.flat();
     await query(sql.replace('__VALUES__', placeholders), params);
   }
+}
+
+async function batchUpsertReturningCount(sql: string, rows: any[][], batchSize = 200): Promise<number> {
+  // Same chunking as batchUpsert but returns the total number of inserted rows
+  // (skipping rows that hit ON CONFLICT DO NOTHING).
+  let count = 0;
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const chunk = rows.slice(i, i + batchSize);
+    const placeholders = chunk.map((row, idx) =>
+      `(${row.map((_, j) => `$${idx * row.length + j + 1}`).join(',')})`,
+    ).join(',');
+    const params = chunk.flat();
+    const result = await query<any>(sql.replace('__VALUES__', placeholders) + ' RETURNING 1', params);
+    count += result.length;
+  }
+  return count;
 }
 
 // ── Ingest: NAME INDEX ────────────────────────────────────────────────────
@@ -742,90 +759,113 @@ async function ingestMaintenance(body: any): Promise<NextResponse> {
     return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
   }
 
-  // 1. Create an upload_log entry (status='pending')
+  // upload_log row
   const logRow = await query<{ id: number }>(
-    `INSERT INTO upload_log (file_name, file_size_bytes, status) VALUES ($1, $2, 'pending') RETURNING id`,
-    [fileName, 0]
+    `INSERT INTO upload_log (file_name, file_size_bytes, status)
+     VALUES ($1, $2, 'pending') RETURNING id`,
+    [fileName, 0],
   );
   const uploadId = logRow[0].id;
 
   try {
-    // 2. Build site name → code map
-    const dbRows = await query<{ site_code: string; budget_name: string }>(
-      'SELECT site_code, UPPER(budget_name) AS budget_name FROM sites'
-    );
-    const nameToCode = new Map(dbRows.map(r => [r.budget_name, r.site_code]));
+    // 1. Parse all rows
+    const { parsed, skipped } = parseRMFinanceRows(rows);
 
-    // 3. Classify each row
+    // 2. Resolve site_code → in/out of sites master
+    const knownSites = await query<{ site_code: string }>(
+      'SELECT site_code FROM sites',
+    );
+    const known = new Set(knownSites.map(r => r.site_code));
+
     const matched: any[][] = [];
     const unmatched: any[][] = [];
-    let skippedBadDate = 0;
-    let skippedBadCost = 0;
-
-    for (const r of rows) {
-      const rawName = safeStr(r['Site']);
-      const dateStr = parseDate(r['Date']) || parseDateDayFirst(r['Date']);
-      const cost = safeFloat(r['Cost'], null);
-      const category = safeStr(r['Category']) || 'Uncategorized';
-
-      if (!dateStr) { skippedBadDate++; continue; }
-      if (cost === null) { skippedBadCost++; continue; }
-
-      const code = rawName ? nameToCode.get(rawName.toUpperCase()) : undefined;
-      if (!code) {
-        unmatched.push([rawName || '(blank)', dateStr, 'MAINTENANCE', fileName, uploadId]);
-        continue;
+    for (const r of parsed) {
+      if (known.has(r.site_code)) {
+        matched.push([
+          r.entry_no, r.site_code, r.service_date, r.description,
+          r.debit_lcy, r.credit_lcy,
+          r.document_type, r.document_no, r.external_doc_no, r.gl_account_no,
+          r.cost_center, uploadId, fileName,
+        ]);
+      } else {
+        unmatched.push([r.site_code, r.service_date, 'R & M FINANCE', fileName, uploadId]);
       }
-      matched.push([code, dateStr, cost, category, uploadId, fileName]);
     }
 
-    // 4. Batch insert matched rows into maintenance_costs
+    // 3. Bulk insert invoices — ON CONFLICT (entry_no) DO NOTHING
+    let inserted = 0;
     if (matched.length > 0) {
-      await batchUpsert(
-        `INSERT INTO maintenance_costs (site_code, service_date, cost, category, upload_log_id, source_file) VALUES __VALUES__`,
-        matched
+      const res = await batchUpsertReturningCount(
+        `INSERT INTO rm_invoices
+           (entry_no, site_code, service_date, description,
+            debit_lcy, credit_lcy,
+            document_type, document_no, external_doc_no, gl_account_no,
+            cost_center, upload_log_id, source_file)
+         VALUES __VALUES__
+         ON CONFLICT (entry_no) DO NOTHING`,
+        matched,
       );
+      inserted = res;
     }
 
-    // 5. Batch insert unmatched rows
+    // 4. Unmatched rows
     if (unmatched.length > 0) {
       await batchUpsert(
-        `INSERT INTO unmatched_status_rows (raw_site_code, sale_date, sheet_name, source_file, upload_log_id) VALUES __VALUES__`,
-        unmatched
+        `INSERT INTO unmatched_status_rows
+           (raw_site_code, sale_date, sheet_name, source_file, upload_log_id)
+         VALUES __VALUES__`,
+        unmatched,
       );
     }
 
-    // 6. Update upload_log to success
-    const rowCounts = {
+    // 5. Insert placeholder rm_description_categories rows for unseen descriptions.
+    //    Use the existing GENERATED description_norm column on rm_invoices to find them.
+    const placeholderRes = await query<{ n: string }>(
+      `WITH unseen AS (
+         SELECT DISTINCT i.description_norm
+           FROM rm_invoices i
+           LEFT JOIN rm_description_categories r USING (description_norm)
+          WHERE r.id IS NULL
+            AND i.description_norm <> ''
+       )
+       INSERT INTO rm_description_categories (description_norm, category_id, source)
+       SELECT u.description_norm,
+              (SELECT id FROM rm_categories WHERE slug='other'),
+              'pending'
+         FROM unseen u
+       ON CONFLICT (description_norm) DO NOTHING
+       RETURNING 1`,
+    );
+    const pendingInserted = placeholderRes.length;
+
+    // 6. Bookkeeping
+    const summary = {
       total: rows.length,
-      inserted: matched.length,
+      inserted,
       unmatched: unmatched.length,
-      skipped_bad_date: skippedBadDate,
-      skipped_bad_cost: skippedBadCost,
-      data_type: 'maintenance',
+      skipped: skipped.length,
+      skipped_reasons: skipped.reduce<Record<string, number>>((acc, s) => {
+        acc[s.reason] = (acc[s.reason] || 0) + 1; return acc;
+      }, {}),
+      pending_descriptions: pendingInserted,
+      data_type: 'rm_finance',
     };
     await query(
       `UPDATE upload_log SET status='success', row_counts=$1, duration_ms=$2 WHERE id=$3`,
-      [JSON.stringify(rowCounts), Date.now() - startMs, uploadId]
+      [JSON.stringify(summary), Date.now() - startMs, uploadId],
     );
 
     return NextResponse.json({
       ok: true,
       uploadLogId: uploadId,
-      summary: {
-        total: rows.length,
-        inserted: matched.length,
-        unmatched: unmatched.length,
-        skippedBadDate,
-        skippedBadCost,
-      },
+      summary,
     });
   } catch (err: any) {
-    console.error('/api/ingest (maintenance) error:', err);
+    console.error('/api/ingest (rm_finance) error:', err);
     await query(
-      `UPDATE upload_log SET status='failed', error_message=$1, duration_ms=$2 WHERE id=$3`,
-      [err.message || 'unknown error', Date.now() - startMs, uploadId]
+      `UPDATE upload_log SET status='failed', error_message=$1 WHERE id=$2`,
+      [String(err.message || 'Unknown error'), uploadId],
     ).catch(() => {});
-    return NextResponse.json({ error: err.message || 'Ingest failed' }, { status: 500 });
+    return NextResponse.json({ error: err.message || 'R&M ingest failed' }, { status: 500 });
   }
 }

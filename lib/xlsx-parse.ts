@@ -128,3 +128,6 @@ export function parseDateDayFirst(val: any): string | null {
   if (isNaN(d.getTime())) return null;
   return localISO(d);
 }
+
+export { parseRMFinanceRow, parseRMFinanceRows } from './rm-finance-parse';
+export type { RMInvoiceRow, ParseReason } from './rm-finance-parse';
