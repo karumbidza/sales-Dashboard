@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RMFilterBar, { defaultRMFilters, RMFilters } from '@/components/rm/RMFilterBar';
@@ -36,6 +36,23 @@ export default function RMCommandCenterPage() {
   const router = useRouter();
   const [filters, setFilters] = useState<RMFilters>(defaultRMFilters());
   const [generating, setGenerating] = useState(false);
+
+  // Report notes — manually entered commentary that gets included in the PDF.
+  // Persisted to localStorage keyed by the active date window so switching
+  // filters and coming back later doesn't lose the writeup.
+  const notesKey = `rm-notes-${filters.dateFrom}-${filters.dateTo}`;
+  const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setNotes(localStorage.getItem(notesKey) || '');
+  }, [notesKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (notes) localStorage.setItem(notesKey, notes);
+    else localStorage.removeItem(notesKey);
+  }, [notes, notesKey]);
 
   async function handleGeneratePDF() {
     if (generating) return;
@@ -95,10 +112,32 @@ export default function RMCommandCenterPage() {
       </header>
 
       <main className="max-w-screen-2xl mx-auto px-6 py-5">
+        {/* PDF page-break rules — scoped to #rm-report-root so they only fire
+            when html2pdf captures the report. */}
+        <style>{`
+          #rm-report-root tr { break-inside: avoid; page-break-inside: avoid; }
+          #rm-report-root .pdf-keep { break-inside: avoid; page-break-inside: avoid; }
+          #rm-report-root .pdf-page-break-before { break-before: page; page-break-before: always; }
+        `}</style>
+
         <RMFilterBar value={filters} onChange={setFilters} />
 
+        {/* Notes editor — visible only in the app, not captured in the PDF. */}
+        <div className="card mb-4">
+          <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1">
+            Report Notes — what drove the numbers this period?
+            <span className="ml-2 font-normal normal-case tracking-normal text-gray-400">(saved locally per date window)</span>
+          </label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="e.g. Feb spike driven by emergency generator overhaul at ZIN-074 (invoice INV-12345, $28K). Pumps category running 22% above LY because we replaced 3 dispensers at GRE-023…"
+            className="w-full text-sm border border-gray-200 rounded p-2 min-h-[72px] resize-y focus:outline-none focus:border-[#1e3a5f]"
+          />
+        </div>
+
         <div id="rm-report-root">
-          <div className="bg-white border border-gray-200 rounded-md px-3 py-2 mb-[10px] text-[10px] text-gray-600">
+          <div className="bg-white border border-gray-200 rounded-md px-3 py-2 mb-[10px] text-[10px] text-gray-600 pdf-keep">
             <span className="font-semibold uppercase tracking-wide text-gray-500 mr-2">Report window</span>
             {filters.dateFrom} → {filters.dateTo}
             {filters.territory && <span> · Territory: <span className="font-medium">{filters.territory}</span></span>}
@@ -107,19 +146,30 @@ export default function RMCommandCenterPage() {
             <span className="float-right text-gray-400">Generated {new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
 
-          <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
-          <CostKpiStrip filters={filters} />
+          {notes.trim() && (
+            <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px] pdf-keep">
+              <div className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-2">Notes</div>
+              <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{notes}</div>
+            </div>
+          )}
+
+          <div className="pdf-keep">
+            <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
+            <CostKpiStrip filters={filters} />
+          </div>
           <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
-            <CostParetoChart filters={filters} />
-            <CostTrendChart filters={filters} />
+            <div className="pdf-keep"><CostParetoChart filters={filters} /></div>
+            <div className="pdf-keep"><CostTrendChart filters={filters} /></div>
           </div>
           <CostHeatmap filters={filters} />
 
-          <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
-          <EfficiencyKpiStrip filters={filters} />
+          <div className="pdf-page-break-before pdf-keep">
+            <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
+            <EfficiencyKpiStrip filters={filters} />
+          </div>
           <div className="grid grid-cols-2 gap-[10px]">
-            <TicketAgingChart filters={filters} />
-            <RecurringIssuesPanel filters={filters} />
+            <div className="pdf-keep"><TicketAgingChart filters={filters} /></div>
+            <div className="pdf-keep"><RecurringIssuesPanel filters={filters} /></div>
           </div>
         </div>
       </main>
