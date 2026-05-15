@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import RMFilterBar, { defaultRMFilters, RMFilters } from '@/components/rm/RMFilterBar';
 import CostKpiStrip from '@/components/rm/CostKpiStrip';
 import CostParetoChart from '@/components/rm/CostParetoChart';
+import CostTrendChart from '@/components/rm/CostTrendChart';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -82,7 +83,7 @@ export default function RMCommandCenterPage() {
         <CostKpiStrip filters={filters} />
         <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
           <CostParetoChart filters={filters} />
-          <PlaceholderCard title="Cost Trend — YTD vs LY" />
+          <CostTrendChart filters={filters} />
         </div>
         <PlaceholderCard title="Site × Category heatmap" height="h-72" />
 
