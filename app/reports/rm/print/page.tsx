@@ -2,6 +2,7 @@
 // Server component the Puppeteer renderer navigates to.
 // Validates the HMAC token, calls buildReportPayload, renders 3 pages.
 import PageFrame from '@/components/print/PageFrame';
+import HeatmapPage from '@/components/print/HeatmapPage';
 import { verifyPrintToken } from '@/lib/printAuth';
 import { buildReportPayload, type ReportPayload } from '@/lib/buildReportPayload';
 import ReadyBeacon from './ReadyBeacon';
@@ -62,9 +63,7 @@ export default async function PrintPage({ searchParams }: Props) {
         pageMeta={`${payload.siteHeatmap.sites.length} sites shown · ${payload.siteHeatmap.rolledUp.siteCount} more rolled up`}
         period={period}
       >
-        <div data-placeholder-page="heatmap" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 11 }}>
-          Site × Category heatmap — placeholder (Task 5 wires real content)
-        </div>
+        <HeatmapPage data={payload.siteHeatmap} />
       </PageFrame>
 
       <PageFrame

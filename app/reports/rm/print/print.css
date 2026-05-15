@@ -112,3 +112,128 @@ input, select, button,
 /* ── Don't split charts or table rows across pages ────────────────── */
 svg, canvas { break-inside: avoid; }
 table tr     { break-inside: avoid; page-break-inside: avoid; }
+
+/* ── Page 2 heatmap ───────────────────────────────────────────────── */
+.hm-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8pt;
+  flex: 1;
+}
+.hm {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.hm-col-note  { width: 28%; }
+.hm-col-total { width: 6%; }
+
+.hm-th {
+  font-size: 6.5pt;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.5pt;
+  padding: 5pt 3pt;
+  text-align: right;
+  white-space: nowrap;
+}
+.hm-th-site { text-align: left; }
+.hm-th-cat  { text-align: right; }
+.hm-th-note { text-align: left; }
+.hm-th-total { text-align: right; }
+
+.hm-td {
+  font-size: 7.5pt;
+  padding: 4pt 3pt;
+  border-bottom: 0.5pt solid #f1f5f9;
+  vertical-align: middle;
+}
+.hm-td-site {
+  white-space: nowrap;
+  text-align: left;
+}
+.hm-site-code {
+  font-size: 6.5pt;
+  color: #94a3b8;
+  margin-right: 4pt;
+  font-family: 'Inter', monospace;
+}
+.hm-site-name {
+  font-weight: 600;
+  font-size: 8.5pt;
+}
+.hm-td-val {
+  text-align: right;
+  color: #0f172a;
+}
+.hm-td-note {
+  font-size: 7.2pt;
+  font-style: italic;
+  color: #475569;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+}
+.hm-td-total {
+  text-align: right;
+  font-weight: 600;
+}
+
+/* tfoot row */
+.hm-tfoot-row .hm-td {
+  border-top: 1pt solid #1e3a5f;
+  border-bottom: none;
+  color: #1e3a5f;
+  font-weight: 700;
+  background: #f8fafc;
+}
+
+/* Quintile colors */
+.hm td.c1 { background-color: #d1fae5; }
+.hm td.c2 { background-color: #ecfccb; }
+.hm td.c3 { background-color: #fef9c3; }
+.hm td.c4 { background-color: #fed7aa; }
+.hm td.c5 { background-color: #fecaca; }
+
+/* Legend */
+.hm-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12pt;
+  font-size: 7pt;
+  color: #64748b;
+}
+.hm-legend-left {
+  display: flex;
+  align-items: center;
+  gap: 4pt;
+}
+.hm-legend-label {
+  font-weight: 700;
+  color: #475569;
+  margin-right: 4pt;
+  letter-spacing: 0.4pt;
+}
+.hm-legend-end {
+  font-size: 7pt;
+}
+.hm-swatch {
+  display: inline-block;
+  width: 14pt;
+  height: 9pt;
+  border: 0.5pt solid #e5e7eb;
+}
+.hm-swatch.c1 { background-color: #d1fae5; }
+.hm-swatch.c2 { background-color: #ecfccb; }
+.hm-swatch.c3 { background-color: #fef9c3; }
+.hm-swatch.c4 { background-color: #fed7aa; }
+.hm-swatch.c5 { background-color: #fecaca; }
+.hm-legend-note {
+  margin-left: 8pt;
+  color: #94a3b8;
+}
+.hm-legend-right {
+  font-style: italic;
+  color: #94a3b8;
+}
