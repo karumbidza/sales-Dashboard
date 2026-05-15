@@ -184,7 +184,7 @@ export default function CostHeatmap({ filters }: Props) {
             </thead>
             <tbody>
               {visibleSites.map(s => (
-                <tr key={s.siteCode}>
+                <tr key={s.siteCode} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                   <td className="px-2 py-1 text-gray-900 whitespace-nowrap">
                     <span className="font-mono text-[10px] text-gray-500 mr-1.5">{s.siteCode}</span>
                     {s.siteName}
