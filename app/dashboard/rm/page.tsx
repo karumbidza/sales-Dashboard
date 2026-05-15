@@ -7,6 +7,7 @@ import RMFilterBar, { defaultRMFilters, RMFilters } from '@/components/rm/RMFilt
 import CostKpiStrip from '@/components/rm/CostKpiStrip';
 import CostParetoChart from '@/components/rm/CostParetoChart';
 import CostTrendChart from '@/components/rm/CostTrendChart';
+import CostHeatmap from '@/components/rm/CostHeatmap';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -85,7 +86,7 @@ export default function RMCommandCenterPage() {
           <CostParetoChart filters={filters} />
           <CostTrendChart filters={filters} />
         </div>
-        <PlaceholderCard title="Site × Category heatmap" height="h-72" />
+        <CostHeatmap filters={filters} />
 
         <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
         <div className="grid grid-cols-4 gap-2 mb-[10px]">
