@@ -18,6 +18,10 @@ export const CATEGORY_SLUGS = [
   'landscaping_grounds',
   'fire_safety',
   'security_cctv',
+  'vehicles',
+  'labour_wages',
+  'cleaning_services',
+  'capex_amortization',
   'other',
 ] as const;
 export type CategorySlug = typeof CATEGORY_SLUGS[number];
@@ -53,8 +57,12 @@ CATEGORIES:
   building_civil       — Paint, roof, doors, windows, tiles, paving, locksets, safes, HVAC, strongroom doors
   canopy_signage       — Canopy structure, signage, illumination, display boards
   landscaping_grounds  — Garden, grass, trees, hedging
-  fire_safety          — Extinguishers, fire equipment
+  fire_safety          — Extinguishers, fire equipment, spill kits, fire signage
   security_cctv        — CCTV, alarms, fences, gates
+  vehicles             — Fleet vehicles by name (Plymouth, Toyota), tyres, vehicle servicing, transport
+  labour_wages         — Recurring people-cost lines: caretaker wages, security wages, person names by themselves
+  cleaning_services    — Routine cleaning (canopy cleaning, deep forecourt cleaning, shop cleaning) — operational, not repair
+  capex_amortization   — Accounting accruals: renovation amortization, capex spread over months, set-up costs
   other                — TRULY no fit. Use sparingly.`;
 
 // Domain terminology unique to Zimbabwean fuel-station maintenance.
@@ -71,7 +79,12 @@ const GLOSSARY = `DOMAIN GLOSSARY (Zimbabwean fuel-station terminology):
   bunding      — concrete containment around tanks → tanks_lines
   day-night switch — photocell light switch → electrical_lighting
   canopy       — overhead roof at fuel pumps → canopy_signage
-  forecourt    — open service area (context only, not a category)`;
+  forecourt    — open service area (context only, not a category)
+  Plymouth / Toyota / vehicle  — vehicle make or generic vehicle reference → vehicles
+  caretaker / gardener wages   — recurring people-cost lines → labour_wages
+  person name only             — likely a wage line if no other context → labour_wages
+  deep cleaning / canopy clean — operational cleaning, NOT repair → cleaning_services
+  amortization / amortisation  — accounting accrual → capex_amortization`;
 
 // Final instructions block — explicit anti-other bias.
 const INSTRUCTIONS = `INSTRUCTIONS:
