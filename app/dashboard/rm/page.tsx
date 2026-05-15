@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RMFilterBar, { defaultRMFilters, RMFilters } from '@/components/rm/RMFilterBar';
 import CostKpiStrip from '@/components/rm/CostKpiStrip';
+import CostParetoChart from '@/components/rm/CostParetoChart';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -80,7 +81,7 @@ export default function RMCommandCenterPage() {
         <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
         <CostKpiStrip filters={filters} />
         <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
-          <PlaceholderCard title="Cost Pareto" />
+          <CostParetoChart filters={filters} />
           <PlaceholderCard title="Cost Trend — YTD vs LY" />
         </div>
         <PlaceholderCard title="Site × Category heatmap" height="h-72" />
