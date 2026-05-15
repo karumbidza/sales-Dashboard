@@ -9,6 +9,7 @@ import CostParetoChart from '@/components/rm/CostParetoChart';
 import CostTrendChart from '@/components/rm/CostTrendChart';
 import CostHeatmap from '@/components/rm/CostHeatmap';
 import EfficiencyKpiStrip from '@/components/rm/EfficiencyKpiStrip';
+import TicketAgingChart from '@/components/rm/TicketAgingChart';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -92,7 +93,7 @@ export default function RMCommandCenterPage() {
         <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
         <EfficiencyKpiStrip filters={filters} />
         <div className="grid grid-cols-2 gap-[10px]">
-          <PlaceholderCard title="Ticket Aging" />
+          <TicketAgingChart filters={filters} />
           <PlaceholderCard title="Recurring Issues — Top 4" />
         </div>
       </main>
