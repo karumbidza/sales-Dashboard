@@ -147,8 +147,8 @@ export default function CostHeatmap({ filters }: Props) {
               <tr>
                 <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Site</th>
                 {displayCats.map(c => (
-                  <th key={c.slug} className="text-right px-1.5 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold whitespace-nowrap">
-                    {c.name}
+                  <th key={c.slug} className="text-right px-1.5 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold whitespace-nowrap" title={c.name}>
+                    {c.name.split(/\s+/)[0]}
                   </th>
                 ))}
                 <th className="text-right px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Total</th>
