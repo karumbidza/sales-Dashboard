@@ -24,9 +24,11 @@ function fmtCurrency(n: number): string {
 
 function fmtPerLitre(n: number | null): string {
   if (n === null) return '—';
-  if (n >= 1)    return `$${n.toFixed(2)}`;
-  if (n >= 0.01) return `$${n.toFixed(3)}`;
-  return `$${n.toFixed(4)}`;
+  // n is $/L. Convert to cents/L for legibility (most values are 0.1–5¢/L).
+  const cents = n * 100;
+  if (Math.abs(cents) >= 100) return `$${n.toFixed(2)}/L`;
+  if (Math.abs(cents) >= 1)   return `${cents.toFixed(1)}¢/L`;
+  return `${cents.toFixed(2)}¢/L`;
 }
 
 function Delta({ pct, goodDirection }: { pct: number | null; goodDirection: 'up' | 'down' }) {

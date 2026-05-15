@@ -29,9 +29,10 @@ function fmtCurrency(n: number): string {
 
 function fmtPerLitre(n: number | null): string {
   if (n === null) return '—';
-  if (n >= 1)    return `$${n.toFixed(2)}`;
-  if (n >= 0.01) return `$${n.toFixed(3)}`;
-  return `$${n.toFixed(4)}`;
+  const cents = n * 100;
+  if (Math.abs(cents) >= 100) return `$${n.toFixed(2)}/L`;
+  if (Math.abs(cents) >= 1)   return `${cents.toFixed(1)}¢/L`;
+  return `${cents.toFixed(2)}¢/L`;
 }
 
 // 4-step blue ramp for $ YTD mode (by quartile)
@@ -152,7 +153,7 @@ export default function CostHeatmap({ filters }: Props) {
         <div className="text-[11px] font-medium text-gray-800">Site × Category Cost</div>
         <div className="flex gap-0.5">
           {metricToggle('cost',     '$ YTD')}
-          {metricToggle('perLitre', '$/L')}
+          {metricToggle('perLitre', '¢/L')}
           {metricToggle('zScore',   'z-score')}
         </div>
       </div>

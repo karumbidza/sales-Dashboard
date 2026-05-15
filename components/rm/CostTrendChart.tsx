@@ -10,6 +10,7 @@ interface TrendResponse {
   priorYear: number;
   currentYear:     TrendPoint[];
   priorYearSeries: TrendPoint[];
+  budgetSeries:    TrendPoint[];
 }
 
 function fmtCurrency(n: number): string {
@@ -46,6 +47,7 @@ export default function CostTrendChart({ filters }: Props) {
       month: p.month,
       current: p.cost,
       prior:   data.priorYearSeries[i]?.cost ?? 0,
+      budget:  data.budgetSeries?.[i]?.cost ?? 0,
     }));
   }, [data]);
 
@@ -76,7 +78,7 @@ export default function CostTrendChart({ filters }: Props) {
         Cost Trend — {data ? `${data.year} vs ${data.priorYear}` : 'YTD vs LY'}
       </div>
 
-      <div style={{ height: 240 }}>
+      <div style={{ height: 320 }}>
         {loading ? (
           <div className="h-full flex items-center justify-center text-xs text-gray-400">Loading…</div>
         ) : merged.length === 0 ? (
@@ -93,6 +95,8 @@ export default function CostTrendChart({ filters }: Props) {
                     stroke="#1e3a5f" strokeWidth={2} dot={{ r: 2 }} />
               <Line type="monotone" dataKey="prior" name={data?.priorYear.toString() || 'Prior'}
                     stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 2" dot={false} />
+              <Line type="monotone" dataKey="budget" name="Budget"
+                    stroke="#15803d" strokeWidth={1.5} strokeDasharray="6 3" dot={false} />
             </LineChart>
           </ResponsiveContainer>
         )}

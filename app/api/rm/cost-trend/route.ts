@@ -41,23 +41,48 @@ export async function GET(req: NextRequest) {
       sql, [priorYearStart, nextYearStart, siteCode, territory, category],
     );
 
-    // Build 12-month arrays for both years
+    // Monthly budget for current year (rm_budget VIEW: $1500/site/month from first sale)
+    // Budget is fleet-wide (no category dim); category filter does not narrow it.
+    const budgetRows = await query<{ mo: number; total: string }>(
+      `SELECT EXTRACT(MONTH FROM b.budget_month)::INT AS mo,
+              SUM(b.budget_amount)::NUMERIC AS total
+         FROM rm_budget b
+         JOIN sites s ON b.site_code = s.site_code
+         LEFT JOIN territories t ON s.territory_id = t.id
+        WHERE b.budget_month >= $1::DATE
+          AND b.budget_month <  $2::DATE
+          AND ($3::TEXT = '' OR b.site_code = $3)
+          AND ($4::TEXT = '' OR t.tm_code  = $4)
+        GROUP BY 1`,
+      [yearStart, nextYearStart, siteCode, territory],
+    );
+
+    // Build 12-month arrays for both years + the current-year budget.
+    // The rm_budget view stops at the current month, so we project the budget
+    // forward to the end of the year by carrying the most recent month's value
+    // — gives the chart a continuous annual envelope to compare against.
     const cy: { month: string; cost: number }[] = [];
     const py: { month: string; cost: number }[] = [];
+    const bud: { month: string; cost: number }[] = [];
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    let lastBudget = 0;
     for (let m = 1; m <= 12; m++) {
-      const cyRow = rows.find(r => r.yr === year     && r.mo === m);
-      const pyRow = rows.find(r => r.yr === year - 1 && r.mo === m);
-      cy.push({ month: MONTHS[m - 1], cost: cyRow ? parseFloat(cyRow.cost) : 0 });
-      py.push({ month: MONTHS[m - 1], cost: pyRow ? parseFloat(pyRow.cost) : 0 });
+      const cyRow  = rows.find(r => r.yr === year     && r.mo === m);
+      const pyRow  = rows.find(r => r.yr === year - 1 && r.mo === m);
+      const budRow = budgetRows.find(b => b.mo === m);
+      if (budRow) lastBudget = parseFloat(budRow.total);
+      cy.push({  month: MONTHS[m - 1], cost: cyRow  ? parseFloat(cyRow.cost)  : 0 });
+      py.push({  month: MONTHS[m - 1], cost: pyRow  ? parseFloat(pyRow.cost)  : 0 });
+      bud.push({ month: MONTHS[m - 1], cost: lastBudget });
     }
 
     return NextResponse.json({
       data: {
         year,
         priorYear: year - 1,
-        currentYear: cy,
+        currentYear:     cy,
         priorYearSeries: py,
+        budgetSeries:    bud,
       },
     });
   } catch (err: any) {
