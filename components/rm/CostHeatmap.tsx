@@ -86,18 +86,8 @@ export default function CostHeatmap({ filters }: Props) {
     return data.sites.slice(0, cap);
   }, [data, showAll]);
 
-  // Cap categories shown to 7 (6 top + "Rest" aggregate)
-  const { displayCats, restCat } = useMemo(() => {
-    if (!data) return { displayCats: [], restCat: null as { slug: string; name: string; total: number } | null };
-    if (data.categories.length <= 7) return { displayCats: data.categories, restCat: null };
-    const top = data.categories.slice(0, 6);
-    const rest = data.categories.slice(6);
-    const restTotal = rest.reduce((a, b) => a + b.total, 0);
-    return {
-      displayCats: top,
-      restCat: { slug: '__rest__', name: 'Rest', total: restTotal },
-    };
-  }, [data]);
+  // Show all categories — table scrolls horizontally on narrow viewports
+  const displayCats = data?.categories ?? [];
 
   const maxCost = useMemo(() => {
     if (!data) return 0;
@@ -118,25 +108,13 @@ export default function CostHeatmap({ filters }: Props) {
     return { display: cell.zScore !== null ? cell.zScore.toFixed(1) : '—',     color: zScoreColor(cell.zScore) };
   }
 
-  function getRestCellSum(siteCode: string): Cell {
-    if (!data || !restCat) return { cost: 0, perLitre: null, zScore: null, ticketCount: 0, invoiceCount: 0, anomaly: 0 };
-    const restSlugs = data.categories.slice(6).map(c => c.slug);
-    let cost = 0, tickets = 0, invoices = 0;
-    for (const slug of restSlugs) {
-      const c = data.matrix[siteCode]?.[slug];
-      if (c) { cost += c.cost; tickets += c.ticketCount; invoices += c.invoiceCount; }
-    }
-    const vol = data.sites.find(s => s.siteCode === siteCode)?.volume || 0;
-    return { cost, perLitre: vol > 0 ? cost / vol : null, zScore: null, ticketCount: tickets, invoiceCount: invoices, anomaly: 0 };
-  }
-
-  function onCellClick(siteCode: string, categorySlug: string | null) {
+  function onCellClick(siteCode: string, categorySlug: string) {
     setDrawerFilters({
       dateFrom:  filters.dateFrom,
       dateTo:    filters.dateTo,
       siteCode,
       territory: filters.territory,
-      category:  categorySlug && categorySlug !== '__rest__' ? categorySlug : '',
+      category:  categorySlug,
     });
   }
 
@@ -173,9 +151,6 @@ export default function CostHeatmap({ filters }: Props) {
                     {c.name}
                   </th>
                 ))}
-                {restCat && (
-                  <th className="text-right px-1.5 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Rest</th>
-                )}
                 <th className="text-right px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Total</th>
               </tr>
             </thead>
@@ -206,22 +181,6 @@ export default function CostHeatmap({ filters }: Props) {
                       </td>
                     );
                   })}
-                  {restCat && (
-                    <td className="px-0.5 py-0.5">
-                      {(() => {
-                        const cell = getRestCellSum(s.siteCode);
-                        const { display, color } = getCellValue(cell);
-                        return (
-                          <button
-                            onClick={() => onCellClick(s.siteCode, null)}
-                            className="w-full px-1.5 py-1 text-right text-[11px] rounded hover:opacity-80"
-                            style={{ background: color.bg, color: color.text }}>
-                            {display}
-                          </button>
-                        );
-                      })()}
-                    </td>
-                  )}
                   <td className="px-2 py-1 text-right font-medium text-gray-900 whitespace-nowrap">
                     {fmtCurrency(s.total)}
                   </td>
