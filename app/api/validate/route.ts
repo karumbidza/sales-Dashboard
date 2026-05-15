@@ -7,6 +7,7 @@ import {
   safeFloat, parseDateDayFirst,
 } from '@/lib/xlsx-parse';
 import { parseRMFinanceRows, ParseReason } from '@/lib/rm-finance-parse';
+import { parseHelpdeskRows, ParseReason as HelpdeskParseReason } from '@/lib/helpdesk-parse';
 
 const SKIP_REASON_LABEL: Record<ParseReason, string> = {
   missing_entry_no:    'Missing or invalid Entry No.',
@@ -65,22 +66,23 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get('content-type') || '';
 
     // Determine dataType (default 'sales' for backwards compatibility)
-    let dataType: 'sales' | 'maintenance' = 'sales';
+    let dataType: 'sales' | 'maintenance' | 'helpdesk' = 'sales';
     try {
       if (contentType.includes('application/json')) {
         const peek = await req.clone().json();
         if (peek?.dataType === 'maintenance') dataType = 'maintenance';
+        else if (peek?.dataType === 'helpdesk') dataType = 'helpdesk';
       } else {
         const fd = await req.clone().formData();
         if (fd.get('dataType') === 'maintenance') dataType = 'maintenance';
+        else if (fd.get('dataType') === 'helpdesk') dataType = 'helpdesk';
       }
     } catch {
       // peek failed; fall through with default 'sales'
     }
 
-    if (dataType === 'maintenance') {
-      return validateMaintenance(req);
-    }
+    if (dataType === 'maintenance') return validateMaintenance(req);
+    if (dataType === 'helpdesk')    return validateHelpdesk(req);
 
     if (contentType.includes('application/json')) {
       const body = await req.json();
@@ -465,6 +467,142 @@ async function validateMaintenance(req: NextRequest): Promise<NextResponse> {
     });
   } catch (err: any) {
     console.error('/api/validate (maintenance) error:', err);
+    return NextResponse.json({
+      ok: false, canIngest: false, error: err.message,
+      checks: [{ id: 'system', sheet: null, title: 'Validator error', status: 'error', detail: err.message }],
+      summary: { errors: 1, warnings: 0, passed: 0 },
+    }, { status: 500 });
+  }
+}
+
+const HELPDESK_REQUIRED_COLS = ['SITE CODE', 'Ticket ID', 'Subject', 'Status', 'Created time'];
+
+const HELPDESK_SKIP_LABEL: Record<HelpdeskParseReason, string> = {
+  missing_ticket_id:  'Missing or invalid Ticket ID',
+  missing_site_code:  'Missing SITE CODE',
+  missing_subject:    'Missing Subject',
+  bad_created_time:   'Unparseable Created time',
+};
+
+async function validateHelpdesk(req: NextRequest): Promise<NextResponse> {
+  try {
+    const contentType = req.headers.get('content-type') || '';
+
+    let rows: Record<string, any>[];
+    let fileName = 'helpdesk.xlsx';
+
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      rows = Array.isArray(body.rows) ? body.rows : [];
+      fileName = body.fileName || fileName;
+    } else {
+      const fd = await req.formData();
+      const file = fd.get('file') as File | null;
+      if (!file) {
+        return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const parsed = parseExcelBuffer(buffer);
+      const sheetName = parsed.sheetNames[0];
+      rows = parsed.sheets[sheetName] || [];
+      fileName = file.name;
+    }
+
+    const checks: Check[] = [];
+    const summary = { errors: 0, warnings: 0, passed: 0 };
+    const addCheck = (id: string, sheet: string | null, title: string, status: Check['status'], detail: string) => {
+      checks.push({ id, sheet, title, status, detail });
+      if (status === 'error') summary.errors++;
+      else if (status === 'warning') summary.warnings++;
+      else summary.passed++;
+    };
+
+    const SHEET = 'R & M HELPDESK';
+    const firstRow = rows.length > 0 ? rows[0] : {};
+
+    // 1. Required columns
+    const presentCols = Object.keys(firstRow);
+    const missingCols = HELPDESK_REQUIRED_COLS.filter(c => !presentCols.includes(c));
+    if (missingCols.length > 0) {
+      addCheck('columns', SHEET, 'Required columns present', 'error',
+        `Missing columns: ${missingCols.join(', ')}`);
+    } else {
+      addCheck('columns', SHEET, 'Required columns present', 'pass',
+        `All ${HELPDESK_REQUIRED_COLS.length} required columns present`);
+    }
+
+    // 2. Parse-based skip diagnostics
+    const { parsed, skipped } = parseHelpdeskRows(rows);
+    const skipsByReason = skipped.reduce<Record<string, number>>((acc, s) => {
+      acc[s.reason] = (acc[s.reason] || 0) + 1; return acc;
+    }, {});
+    const totalSkipped = skipped.length;
+
+    if (totalSkipped === 0) {
+      addCheck('parseable', SHEET, 'Rows parseable for ingest', 'pass',
+        `All ${rows.length} rows parse cleanly`);
+    } else {
+      const ratio = rows.length > 0 ? totalSkipped / rows.length : 0;
+      const status: Check['status'] = ratio >= 0.05 ? 'error' : 'warning';
+      const breakdown = Object.entries(skipsByReason)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, n]) => `${n} ${HELPDESK_SKIP_LABEL[k as HelpdeskParseReason] || k}`)
+        .join('; ');
+      addCheck('parseable', SHEET, 'Rows parseable for ingest', status,
+        `${totalSkipped} of ${rows.length} row(s) will be skipped: ${breakdown}`);
+    }
+
+    // Date range
+    let dateRange: { from: string; to: string } | null = null;
+    if (parsed.length > 0) {
+      let minD: string | null = null;
+      let maxD: string | null = null;
+      for (const p of parsed) {
+        const day = p.created_time.slice(0, 10);
+        if (!minD || day < minD) minD = day;
+        if (!maxD || day > maxD) maxD = day;
+      }
+      if (minD && maxD) {
+        dateRange = { from: minD, to: maxD };
+        addCheck('date_range', SHEET, 'Date range detected', 'pass', `${minD} → ${maxD}`);
+      }
+    }
+
+    // 3. Site codes vs DB
+    const siteCodesInFile = Array.from(
+      new Set(rows.map(r => String(r['SITE CODE'] ?? '').trim().toUpperCase()).filter(Boolean)),
+    );
+    try {
+      const dbRows = await query<{ site_code: string }>('SELECT site_code FROM sites');
+      const known = new Set(dbRows.map(r => r.site_code));
+      const unknown = siteCodesInFile.filter(c => !known.has(c));
+      if (unknown.length === 0) {
+        addCheck('site_codes', SHEET, 'Site codes matched to DB', 'pass',
+          `All ${siteCodesInFile.length} site code(s) recognised`);
+      } else {
+        addCheck('site_codes', SHEET, 'Site codes matched to DB', 'warning',
+          `${unknown.length} unknown site code(s): ${unknown.slice(0, 5).join(', ')}`);
+      }
+    } catch {
+      // DB unreachable — skip site check
+    }
+
+    const errors = summary.errors;
+    const warnings = summary.warnings;
+    const passed = summary.passed;
+    const canIngest = errors === 0;
+
+    return NextResponse.json({
+      ok: canIngest,
+      canIngest,
+      checks,
+      summary: { errors, warnings, passed },
+      sheetRowCounts: { [SHEET]: rows.length },
+      dateRange,
+      fileName,
+    });
+  } catch (err: any) {
+    console.error('/api/validate (helpdesk) error:', err);
     return NextResponse.json({
       ok: false, canIngest: false, error: err.message,
       checks: [{ id: 'system', sheet: null, title: 'Validator error', status: 'error', detail: err.message }],

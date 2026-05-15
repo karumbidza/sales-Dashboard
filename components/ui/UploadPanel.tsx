@@ -167,7 +167,7 @@ export default function UploadPanel({ onSuccess }: Props) {
   const [ingestLog, setIngestLog] = useState('');
   const [errorMsg, setErrorMsg]   = useState('');
   const [dragging, setDragging]   = useState(false);
-  const [dataType, setDataType]   = useState<'sales' | 'maintenance'>('sales');
+  const [dataType, setDataType]   = useState<'sales' | 'maintenance' | 'helpdesk'>('sales');
   const [categorizing, setCategorizing] = useState<null | {
     uploadLogId: number | null;
     pending: number;
@@ -184,6 +184,7 @@ export default function UploadPanel({ onSuccess }: Props) {
     setIngestLog(''); setErrorMsg('');
     setIngestProgress(null); setCategorizing(null);
     delete (window as any).__rmParsedRows;
+    delete (window as any).__helpdeskParsedRows;
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -192,9 +193,9 @@ export default function UploadPanel({ onSuccess }: Props) {
       setFile(f); setParsed(null); setPhase('idle');
       setValidation(null); setRowCounts(null); setErrorMsg('');
 
-      if (dataType === 'maintenance') {
-        // Maintenance uploads skip the sales-specific multi-sheet parser.
-        // Parsing happens inside handleValidate instead.
+      if (dataType === 'maintenance' || dataType === 'helpdesk') {
+        // R&M Finance and Helpdesk uploads skip the sales-specific multi-sheet
+        // parser. Parsing happens inside handleValidate instead.
         setParsing(false);
         return;
       }
@@ -254,6 +255,45 @@ export default function UploadPanel({ onSuccess }: Props) {
 
         // Stash the parsed rows so handleIngest can reuse them without re-parsing
         (window as any).__rmParsedRows = rows;
+
+        setValidation({
+          checks: [], summary: { errors: 0, warnings: 0, passed: 0 },
+          sheetRowCounts: {}, dateRange: null, fileName: file.name, ok: false, canIngest: false,
+          ...data,
+        });
+        setPhase('validated');
+        return;
+      }
+
+      if (dataType === 'helpdesk') {
+        // Pick the R & M HELPDESK sheet by name.
+        const xlsxModule = await import('xlsx');
+        const XLSX = xlsxModule.default ?? xlsxModule;
+        const ab = await file.arrayBuffer();
+        const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+
+        const helpdeskSheetName =
+          wb.SheetNames.find(n => n.trim().toUpperCase().replace(/\s+/g, ' ') === 'R & M HELPDESK')
+          ?? (wb.SheetNames.length === 1 ? wb.SheetNames[0] : null);
+
+        if (!helpdeskSheetName) {
+          throw new Error(
+            `Helpdesk ingest requires a sheet named "R & M HELPDESK". ` +
+            `Found sheets: ${wb.SheetNames.join(', ')}`,
+          );
+        }
+
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(
+          wb.Sheets[helpdeskSheetName], { defval: null, raw: false }
+        );
+
+        const { data } = await postJSON('/api/validate', {
+          dataType: 'helpdesk',
+          rows,
+          fileName: file.name,
+        });
+
+        (window as any).__helpdeskParsedRows = rows;
 
         setValidation({
           checks: [], summary: { errors: 0, warnings: 0, passed: 0 },
@@ -489,6 +529,50 @@ export default function UploadPanel({ onSuccess }: Props) {
         return;
       }
 
+      if (dataType === 'helpdesk') {
+        const rows = (window as any).__helpdeskParsedRows;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new Error('No parsed helpdesk rows available — please re-validate');
+        }
+
+        const CHUNK_SIZE = 2000;
+        const totalChunks = Math.max(1, Math.ceil(rows.length / CHUNK_SIZE));
+        let logId: number | null = null;
+        let cumulative: any = null;
+
+        for (let i = 0; i < totalChunks; i++) {
+          const chunk = rows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          const isFinal = i === totalChunks - 1;
+          setIngestProgress({ current: i + 1, total: totalChunks });
+
+          const { data } = await postJSON('/api/ingest', {
+            dataType: 'helpdesk',
+            rows: chunk,
+            fileName: file.name,
+            uploadLogId: logId,
+            final: isFinal,
+          });
+          if (!data.ok) throw new Error(data.error || 'Helpdesk ingest failed');
+
+          logId = data.uploadLogId ?? logId;
+          cumulative = data.cumulative ?? cumulative;
+        }
+
+        setIngestProgress(null);
+        setDuration(Date.now() - start);
+        setRowCounts({ helpdesk: cumulative?.upserted || 0 } as any);
+
+        const pending = Number(cumulative?.pending_descriptions || 0);
+        if (pending > 0) {
+          setCategorizing({ uploadLogId: logId, pending });
+        } else {
+          setPhase('done');
+          onSuccess();
+        }
+        delete (window as any).__helpdeskParsedRows;
+        return;
+      }
+
       // ──── Sales ingest (unchanged below) ────
       if (!parsed) return;
 
@@ -590,12 +674,13 @@ export default function UploadPanel({ onSuccess }: Props) {
         <label className="block text-xs font-semibold text-gray-600 mb-1">Data type</label>
         <select
           value={dataType}
-          onChange={e => setDataType(e.target.value as 'sales' | 'maintenance')}
+          onChange={e => setDataType(e.target.value as 'sales' | 'maintenance' | 'helpdesk')}
           disabled={phase !== 'idle' && phase !== 'error'}
           className="text-sm border border-gray-300 rounded px-2 py-1 disabled:bg-gray-100 disabled:text-gray-400"
         >
           <option value="sales">Sales (Status Report)</option>
           <option value="maintenance">R&amp;M (Repairs &amp; Maintenance)</option>
+          <option value="helpdesk">R&amp;M Helpdesk</option>
         </select>
       </div>
 
@@ -707,7 +792,7 @@ export default function UploadPanel({ onSuccess }: Props) {
       )}
 
       {/* ── Action buttons ────────────────────────────────── */}
-      {file && (dataType === 'maintenance' || parsed) && phase === 'idle' && (
+      {file && (dataType === 'maintenance' || dataType === 'helpdesk' || parsed) && phase === 'idle' && (
         <button onClick={handleValidate}
                 className="w-full h-9 bg-[#1e3a5f] hover:bg-[#162d4a] text-white
                            text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
@@ -880,6 +965,13 @@ export default function UploadPanel({ onSuccess }: Props) {
                     className="w-full h-9 bg-emerald-600 hover:bg-emerald-700 text-white
                                text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
               Upload R&amp;M Data
+            </button>
+          )}
+          {validation.canIngest && dataType === 'helpdesk' && (
+            <button onClick={handleIngest}
+                    className="w-full h-9 bg-emerald-600 hover:bg-emerald-700 text-white
+                               text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
+              Upload Helpdesk Data
             </button>
           )}
           {validation.canIngest && dataType === 'sales' && (

@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { parseRMFinanceRows } from '@/lib/rm-finance-parse';
+import { parseHelpdeskRows } from '@/lib/helpdesk-parse';
 import { APPLY_RULES_SQL } from '@/lib/rm-rules';
 import {
   parseExcelBuffer, compactToSheets, safeFloat, safeStr, siteCode,
@@ -574,6 +575,9 @@ export async function POST(req: NextRequest) {
     if (peekBody?.dataType === 'maintenance') {
       return ingestMaintenance(peekBody);
     }
+    if (peekBody?.dataType === 'helpdesk') {
+      return ingestHelpdesk(peekBody);
+    }
   }
 
   // ── Per-sheet JSON protocol ──────────────────────────────
@@ -918,5 +922,192 @@ async function ingestMaintenance(body: any): Promise<NextResponse> {
       [String(err.message || 'Unknown error'), uploadId],
     ).catch(() => {});
     return NextResponse.json({ error: err.message || 'R&M ingest failed' }, { status: 500 });
+  }
+}
+
+async function ingestHelpdesk(body: any): Promise<NextResponse> {
+  const startMs = Date.now();
+  const rows: Record<string, any>[] = Array.isArray(body?.rows) ? body.rows : [];
+  const fileName: string = body?.fileName || 'helpdesk.xlsx';
+  const incomingLogId: number | null =
+    typeof body?.uploadLogId === 'number' ? body.uploadLogId : null;
+  const isFinal: boolean = body?.final !== false;
+
+  if (rows.length === 0) {
+    return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
+  }
+
+  let uploadId: number;
+  if (incomingLogId) {
+    uploadId = incomingLogId;
+  } else {
+    const logRow = await query<{ id: number }>(
+      `INSERT INTO upload_log (file_name, file_size_bytes, status)
+       VALUES ($1, $2, 'pending') RETURNING id`,
+      [fileName, 0],
+    );
+    uploadId = logRow[0].id;
+  }
+
+  try {
+    // 1. Parse
+    const { parsed, skipped } = parseHelpdeskRows(rows);
+
+    // 2. Site code resolution
+    const knownSites = await query<{ site_code: string }>('SELECT site_code FROM sites');
+    const known = new Set(knownSites.map(r => r.site_code));
+
+    const matched: any[][] = [];
+    const unmatched: any[][] = [];
+    for (const r of parsed) {
+      if (known.has(r.site_code)) {
+        matched.push([
+          r.ticket_id, r.site_code, r.subject, r.status, r.priority,
+          r.source, r.ticket_group, r.agent, r.equipment, r.service_provider,
+          r.created_time, r.due_time, r.resolved_time, r.closed_time,
+          r.resolution_minutes, r.resolution_status,
+          uploadId, fileName,
+        ]);
+      } else {
+        unmatched.push([r.site_code, r.created_time.slice(0, 10), 'R & M HELPDESK', fileName, uploadId]);
+      }
+    }
+
+    // 3. Bulk upsert. ON CONFLICT updates only mutable fields.
+    let upserted = 0;
+    if (matched.length > 0) {
+      const placeholders = matched.map((row, bi) => {
+        const offset = bi * row.length;
+        return `(${row.map((_, ci) => `$${offset + ci + 1}`).join(',')})`;
+      }).join(',');
+      const params = matched.flat();
+      const result = await query<any>(
+        `INSERT INTO rm_helpdesk_tickets
+           (ticket_id, site_code, subject, status, priority,
+            source, ticket_group, agent, equipment, service_provider,
+            created_time, due_time, resolved_time, closed_time,
+            resolution_minutes, resolution_status,
+            upload_log_id, source_file)
+         VALUES ${placeholders}
+         ON CONFLICT (ticket_id) DO UPDATE SET
+           status             = EXCLUDED.status,
+           priority           = EXCLUDED.priority,
+           agent              = EXCLUDED.agent,
+           service_provider   = EXCLUDED.service_provider,
+           due_time           = EXCLUDED.due_time,
+           resolved_time      = EXCLUDED.resolved_time,
+           closed_time        = EXCLUDED.closed_time,
+           resolution_minutes = EXCLUDED.resolution_minutes,
+           resolution_status  = EXCLUDED.resolution_status,
+           upload_log_id      = EXCLUDED.upload_log_id,
+           source_file        = EXCLUDED.source_file,
+           ingested_at        = NOW()
+         RETURNING 1`,
+        params,
+      );
+      upserted = result.length;
+    }
+
+    // 4. Unmatched
+    if (unmatched.length > 0) {
+      const placeholders = unmatched.map((row, bi) => {
+        const offset = bi * row.length;
+        return `(${row.map((_, ci) => `$${offset + ci + 1}`).join(',')})`;
+      }).join(',');
+      const params = unmatched.flat();
+      await query(
+        `INSERT INTO unmatched_status_rows
+           (raw_site_code, sale_date, sheet_name, source_file, upload_log_id)
+         VALUES ${placeholders}`,
+        params,
+      );
+    }
+
+    // 5. Discover unseen description_norm from this upload's tickets.
+    const placeholderRes = await query<{ n: string }>(
+      `WITH unseen AS (
+         SELECT DISTINCT t.description_norm
+           FROM rm_helpdesk_tickets t
+           LEFT JOIN rm_description_categories r USING (description_norm)
+          WHERE r.id IS NULL
+            AND t.description_norm <> ''
+            AND t.upload_log_id = $1
+       )
+       INSERT INTO rm_description_categories (description_norm, category_id, source)
+       SELECT u.description_norm,
+              (SELECT id FROM rm_categories WHERE slug='other'),
+              'pending'
+         FROM unseen u
+       ON CONFLICT (description_norm) DO NOTHING
+       RETURNING 1`,
+      [uploadId],
+    );
+    const pendingInserted = placeholderRes.length;
+
+    // 5b. Apply active keyword rules immediately
+    await query(APPLY_RULES_SQL).catch(e => console.warn('rule apply failed:', e));
+
+    // 6. Bookkeeping
+    const chunkSummary = {
+      total: rows.length,
+      upserted,
+      unmatched: unmatched.length,
+      skipped: skipped.length,
+      skipped_reasons: skipped.reduce<Record<string, number>>((acc, s) => {
+        acc[s.reason] = (acc[s.reason] || 0) + 1; return acc;
+      }, {}),
+      pending_descriptions: pendingInserted,
+      data_type: 'helpdesk',
+    };
+
+    const priorRow = await query<{ row_counts: any; duration_ms: number | null }>(
+      `SELECT row_counts, duration_ms FROM upload_log WHERE id = $1`,
+      [uploadId],
+    );
+    const prior = (priorRow[0]?.row_counts as Record<string, any>) || {};
+    const priorReasons = (prior.skipped_reasons as Record<string, number>) || {};
+    const mergedReasons: Record<string, number> = { ...priorReasons };
+    for (const [k, v] of Object.entries(chunkSummary.skipped_reasons)) {
+      mergedReasons[k] = (mergedReasons[k] || 0) + v;
+    }
+    const mergedSummary = {
+      total:                (prior.total                || 0) + chunkSummary.total,
+      upserted:             (prior.upserted             || 0) + chunkSummary.upserted,
+      unmatched:            (prior.unmatched            || 0) + chunkSummary.unmatched,
+      skipped:              (prior.skipped              || 0) + chunkSummary.skipped,
+      skipped_reasons:      mergedReasons,
+      pending_descriptions: (prior.pending_descriptions || 0) + chunkSummary.pending_descriptions,
+      data_type:            'helpdesk',
+    };
+    const cumulativeMs = (priorRow[0]?.duration_ms || 0) + (Date.now() - startMs);
+
+    await query(
+      `UPDATE upload_log
+          SET status      = $1,
+              row_counts  = $2,
+              duration_ms = $3
+        WHERE id = $4`,
+      [
+        isFinal ? 'success' : 'pending',
+        JSON.stringify(mergedSummary),
+        cumulativeMs,
+        uploadId,
+      ],
+    );
+
+    return NextResponse.json({
+      ok: true,
+      uploadLogId: uploadId,
+      summary: chunkSummary,
+      cumulative: mergedSummary,
+      final: isFinal,
+    });
+  } catch (err: any) {
+    console.error('/api/ingest (helpdesk) error:', err);
+    await query(
+      `UPDATE upload_log SET status='failed', error_message=$1 WHERE id=$2`,
+      [String(err.message || 'Unknown error'), uploadId],
+    ).catch(() => {});
+    return NextResponse.json({ error: err.message || 'Helpdesk ingest failed' }, { status: 500 });
   }
 }
