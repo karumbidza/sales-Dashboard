@@ -10,6 +10,7 @@ import CostTrendChart from '@/components/rm/CostTrendChart';
 import CostHeatmap from '@/components/rm/CostHeatmap';
 import EfficiencyKpiStrip from '@/components/rm/EfficiencyKpiStrip';
 import TicketAgingChart from '@/components/rm/TicketAgingChart';
+import RecurringIssuesPanel from '@/components/rm/RecurringIssuesPanel';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -30,16 +31,6 @@ function LensDivider({ label, accent }: { label: string; accent: 'cost' | 'effic
   );
 }
 
-function PlaceholderCard({ title, height = 'h-56' }: { title: string; height?: string }) {
-  return (
-    <div className={`bg-white border border-gray-200 rounded-md p-3 ${height} flex flex-col`}>
-      <div className="text-[11px] font-medium text-gray-700 mb-2">{title}</div>
-      <div className="flex-1 flex items-center justify-center text-xs text-gray-400">
-        Coming next task
-      </div>
-    </div>
-  );
-}
 
 export default function RMCommandCenterPage() {
   const router = useRouter();
@@ -94,7 +85,7 @@ export default function RMCommandCenterPage() {
         <EfficiencyKpiStrip filters={filters} />
         <div className="grid grid-cols-2 gap-[10px]">
           <TicketAgingChart filters={filters} />
-          <PlaceholderCard title="Recurring Issues — Top 4" />
+          <RecurringIssuesPanel filters={filters} />
         </div>
       </main>
     </div>
