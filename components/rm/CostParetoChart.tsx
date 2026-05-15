@@ -61,7 +61,7 @@ export default function CostParetoChart({ filters }: Props) {
   const items = (data?.items || []).slice(0, 12);  // cap at 12 for readability
 
   return (
-    <div className="bg-white border border-gray-200 rounded-md p-3 flex flex-col" style={{ minHeight: 280 }}>
+    <div className="bg-white border border-gray-200 rounded-md p-3 flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <div className="text-[11px] font-medium text-gray-800">Cost Pareto</div>
         <div className="flex gap-0.5">
@@ -76,7 +76,7 @@ export default function CostParetoChart({ filters }: Props) {
         </div>
       </div>
 
-      <div className="flex-1" style={{ minHeight: 220 }}>
+      <div style={{ height: 240 }}>
         {loading ? (
           <div className="h-full flex items-center justify-center text-xs text-gray-400">Loading…</div>
         ) : items.length === 0 ? (
