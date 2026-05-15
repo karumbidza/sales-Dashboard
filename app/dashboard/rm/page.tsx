@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RMFilterBar, { defaultRMFilters, RMFilters } from '@/components/rm/RMFilterBar';
+import CostKpiStrip from '@/components/rm/CostKpiStrip';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -77,12 +78,7 @@ export default function RMCommandCenterPage() {
         <RMFilterBar value={filters} onChange={setFilters} />
 
         <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
-        <div className="grid grid-cols-4 gap-2 mb-[10px]">
-          <PlaceholderCard title="YTD Cost" height="h-24" />
-          <PlaceholderCard title="MTD Cost" height="h-24" />
-          <PlaceholderCard title="$ / Litre" height="h-24" />
-          <PlaceholderCard title="Top Category" height="h-24" />
-        </div>
+        <CostKpiStrip filters={filters} />
         <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
           <PlaceholderCard title="Cost Pareto" />
           <PlaceholderCard title="Cost Trend — YTD vs LY" />
