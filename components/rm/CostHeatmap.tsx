@@ -1,8 +1,42 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RMFilters } from './RMFilterBar';
 import InvoiceDrawer, { InvoiceFilters } from '@/components/maintenance/InvoiceDrawer';
+
+// Reliable PDF-capturable inline note cell. <input>/<textarea> values
+// don't always render in html2canvas; a contentEditable <div> writes
+// the text as plain DOM so the PDF picks it up. Width matches the
+// 200px column; long text wraps to multiple lines, growing row height.
+function NoteCell({
+  initial, onCommit, placeholder,
+}: {
+  initial: string;
+  onCommit: (v: string) => void;
+  placeholder: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current && ref.current.innerText !== initial) {
+      ref.current.innerText = initial;
+    }
+    // Mount-only — don't re-sync on every state change or the cursor jumps.
+    // The wrapper passes key={`${dateFrom}-${dateTo}-${siteCode}`} so a
+    // window-change forces a fresh mount with the new value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={e => onCommit(e.currentTarget.innerText.trim())}
+      data-placeholder={placeholder}
+      className="rm-note-cell w-full text-[11px] border border-gray-200 rounded px-1.5 py-1 whitespace-pre-wrap break-words leading-snug focus:outline-none focus:border-[#1e3a5f]"
+      style={{ minHeight: 24 }}
+    />
+  );
+}
 
 interface Cell {
   cost: number;
@@ -55,9 +89,26 @@ function zScoreColor(z: number | null): { bg: string; text: string } {
   return { bg: '#1e3a5f', text: '#ffffff' };
 }
 
-interface Props { filters: RMFilters }
+interface Props {
+  filters: RMFilters;
+  /** 'commented' shows the per-site Note column (default).
+   *  'plain' hides notes and shows all sites uncapped — used for the
+   *  YTD all-sites view. */
+  mode?: 'commented' | 'plain';
+  /** Default row cap before "Show all" is clicked (commented mode only). */
+  rowCap?: number;
+  /** Section title in the card header. */
+  title?: string;
+}
 
-export default function CostHeatmap({ filters }: Props) {
+export default function CostHeatmap({
+  filters,
+  mode = 'commented',
+  rowCap = 12,
+  title = 'Site × Category Cost',
+}: Props) {
+  const showNotes  = mode === 'commented';
+  const isAllSites = mode === 'plain';
   const [data, setData] = useState<HeatmapResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [metric, setMetric] = useState<Metric>('cost');
@@ -120,9 +171,10 @@ export default function CostHeatmap({ filters }: Props) {
   }, [data, sortBy]);
 
   const visibleSites = useMemo(() => {
-    const cap = showAll ? sortedSites.length : 12;
+    if (isAllSites) return sortedSites;            // YTD full list
+    const cap = showAll ? sortedSites.length : rowCap;
     return sortedSites.slice(0, cap);
-  }, [sortedSites, showAll]);
+  }, [sortedSites, showAll, rowCap, isAllSites]);
 
   // Show all categories — table scrolls horizontally on narrow viewports
   const displayCats = data?.categories ?? [];
@@ -166,7 +218,7 @@ export default function CostHeatmap({ filters }: Props) {
   return (
     <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px]">
       <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
-        <div className="text-[11px] font-medium text-gray-800">Site × Category Cost</div>
+        <div className="text-[11px] font-medium text-gray-800">{title}</div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
             Sort
@@ -202,7 +254,9 @@ export default function CostHeatmap({ filters }: Props) {
                     {c.name.split(/\s+/)[0]}
                   </th>
                 ))}
-                <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold w-[200px]">Note</th>
+                {showNotes && (
+                  <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold w-[220px]">Note</th>
+                )}
                 <th className="text-right px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Total</th>
               </tr>
             </thead>
@@ -233,15 +287,16 @@ export default function CostHeatmap({ filters }: Props) {
                       </td>
                     );
                   })}
-                  <td className="px-1.5 py-0.5 w-[200px]">
-                    <input
-                      type="text"
-                      value={siteNotes[s.siteCode] || ''}
-                      onChange={e => updateSiteNote(s.siteCode, e.target.value)}
-                      placeholder="add note…"
-                      className="w-full text-[11px] border border-gray-200 rounded px-1.5 py-1 placeholder-gray-300 focus:outline-none focus:border-[#1e3a5f]"
-                    />
-                  </td>
+                  {showNotes && (
+                    <td className="px-1.5 py-0.5 align-top w-[220px]">
+                      <NoteCell
+                        key={`${filters.dateFrom}-${filters.dateTo}-${s.siteCode}`}
+                        initial={siteNotes[s.siteCode] || ''}
+                        onCommit={v => updateSiteNote(s.siteCode, v)}
+                        placeholder="add note…"
+                      />
+                    </td>
+                  )}
                   <td className="px-2 py-1 text-right font-medium text-gray-900 whitespace-nowrap">
                     {fmtCurrency(s.total)}
                   </td>
@@ -256,7 +311,7 @@ export default function CostHeatmap({ filters }: Props) {
                     {fmtCurrency(c.total)}
                   </td>
                 ))}
-                <td className="px-2 py-1.5 w-[200px]"></td>
+                {showNotes && <td className="px-2 py-1.5 w-[220px]"></td>}
                 <td className="px-2 py-1.5 text-right text-[11px] font-semibold text-gray-900 whitespace-nowrap">
                   {fmtCurrency(data.categories.reduce((a, b) => a + b.total, 0))}
                 </td>
@@ -264,18 +319,18 @@ export default function CostHeatmap({ filters }: Props) {
             </tfoot>
           </table>
 
-          {!showAll && data.sites.length > 12 && (
+          {!isAllSites && !showAll && data.sites.length > rowCap && (
             <div className="text-[10px] text-gray-500 mt-2 flex items-center justify-between">
-              <span>{data.sites.length - 12} more sites · click any cell for invoice detail</span>
+              <span>{data.sites.length - rowCap} more sites · click any cell for invoice detail</span>
               <button onClick={() => setShowAll(true)} className="text-[#1e3a5f] hover:underline font-medium">
                 Show all
               </button>
             </div>
           )}
-          {showAll && (
+          {!isAllSites && showAll && (
             <div className="text-[10px] text-gray-500 mt-2">
               <button onClick={() => setShowAll(false)} className="text-[#1e3a5f] hover:underline font-medium">
-                Collapse to top 12
+                Collapse to top {rowCap}
               </button>
             </div>
           )}

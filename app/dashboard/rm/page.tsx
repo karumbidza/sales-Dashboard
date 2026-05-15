@@ -37,6 +37,14 @@ export default function RMCommandCenterPage() {
   const [filters, setFilters] = useState<RMFilters>(defaultRMFilters());
   const [generating, setGenerating] = useState(false);
 
+  // The All-Sites heatmap is always YTD regardless of the user's selected window.
+  const ytdFilters = (() => {
+    const now = new Date();
+    const yearStart = `${now.getUTCFullYear()}-01-01`;
+    const today     = now.toISOString().slice(0, 10);
+    return { ...filters, dateFrom: yearStart, dateTo: today };
+  })();
+
   // Report notes — manually entered commentary that gets included in the PDF.
   // Persisted to localStorage keyed by the active date window so switching
   // filters and coming back later doesn't lose the writeup.
@@ -121,6 +129,12 @@ export default function RMCommandCenterPage() {
           #rm-report-root tr { break-inside: avoid; page-break-inside: avoid; }
           #rm-report-root .pdf-keep { break-inside: avoid; page-break-inside: avoid; }
           #rm-report-root .pdf-page-break-before { break-before: page; page-break-before: always; }
+          /* Placeholder for the contentEditable note cells in CostHeatmap. */
+          .rm-note-cell:empty::before {
+            content: attr(data-placeholder);
+            color: #d1d5db;
+            pointer-events: none;
+          }
         `}</style>
 
         <RMFilterBar value={filters} onChange={setFilters} />
@@ -167,13 +181,28 @@ export default function RMCommandCenterPage() {
             </div>
           )}
 
-          {/* Heatmap starts page 2 — too wide/tall to share a page cleanly. */}
+          {/* Page 2 — top 20 sites for the selected window, with per-site notes. */}
           <div className="pdf-page-break-before">
-            <CostHeatmap filters={filters} />
+            <CostHeatmap
+              filters={filters}
+              mode="commented"
+              rowCap={20}
+              title={`Top 20 Sites — ${filters.dateFrom} → ${filters.dateTo} (with explanations)`}
+            />
           </div>
 
+          {/* Page 3 — full YTD list, no notes, always all sites. */}
+          <div className="pdf-page-break-before">
+            <CostHeatmap
+              filters={{ ...filters, dateFrom: ytdFilters.dateFrom, dateTo: ytdFilters.dateTo }}
+              mode="plain"
+              title={`All Sites — ${ytdFilters.dateFrom} → ${ytdFilters.dateTo} (YTD)`}
+            />
+          </div>
+
+          {/* Page 4 — Helpdesk / efficiency. */}
           <div className="pdf-page-break-before pdf-keep">
-            <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
+            <LensDivider label="EFFICIENCY LENS · OPERATIONAL · HELPDESK" accent="efficiency" />
             <EfficiencyKpiStrip filters={filters} />
           </div>
           <div className="grid grid-cols-2 gap-[10px]">
