@@ -35,6 +35,28 @@ function LensDivider({ label, accent }: { label: string; accent: 'cost' | 'effic
 export default function RMCommandCenterPage() {
   const router = useRouter();
   const [filters, setFilters] = useState<RMFilters>(defaultRMFilters());
+  const [generating, setGenerating] = useState(false);
+
+  async function handleGeneratePDF() {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const root = document.getElementById('rm-report-root');
+      if (!root) return;
+      const mod = await import('html2pdf.js');
+      const html2pdf = (mod as any).default ?? mod;
+      await html2pdf().set({
+        margin: 6,
+        filename: `Redan-RM-Report-${filters.dateFrom}_to_${filters.dateTo}.pdf`,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['css', 'legacy'] },
+      }).from(root).save();
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   return (
     <div className="min-h-screen" style={{ background: '#f4f6f9' }}>
@@ -51,6 +73,11 @@ export default function RMCommandCenterPage() {
             <span className="text-[11px]" style={{ color: '#93c5fd' }}>
               {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
+            <button onClick={handleGeneratePDF}
+                    disabled={generating}
+                    className="flex items-center gap-1.5 text-xs font-medium text-white bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-md transition">
+              {generating ? 'Generating PDF…' : 'Generate PDF'}
+            </button>
             <button onClick={async () => { await fetch('/api/auth', { method: 'DELETE' }); router.push('/login'); }}
                     className="text-xs text-white/60 hover:text-white px-2 py-1.5 rounded-md transition">
               Sign out
@@ -70,19 +97,30 @@ export default function RMCommandCenterPage() {
       <main className="max-w-screen-2xl mx-auto px-6 py-5">
         <RMFilterBar value={filters} onChange={setFilters} />
 
-        <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
-        <CostKpiStrip filters={filters} />
-        <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
-          <CostParetoChart filters={filters} />
-          <CostTrendChart filters={filters} />
-        </div>
-        <CostHeatmap filters={filters} />
+        <div id="rm-report-root">
+          <div className="bg-white border border-gray-200 rounded-md px-3 py-2 mb-[10px] text-[10px] text-gray-600">
+            <span className="font-semibold uppercase tracking-wide text-gray-500 mr-2">Report window</span>
+            {filters.dateFrom} → {filters.dateTo}
+            {filters.territory && <span> · Territory: <span className="font-medium">{filters.territory}</span></span>}
+            {filters.siteCode  && <span> · Site: <span className="font-medium">{filters.siteCode}</span></span>}
+            {filters.category  && <span> · Category: <span className="font-medium">{filters.category}</span></span>}
+            <span className="float-right text-gray-400">Generated {new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
 
-        <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
-        <EfficiencyKpiStrip filters={filters} />
-        <div className="grid grid-cols-2 gap-[10px]">
-          <TicketAgingChart filters={filters} />
-          <RecurringIssuesPanel filters={filters} />
+          <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
+          <CostKpiStrip filters={filters} />
+          <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
+            <CostParetoChart filters={filters} />
+            <CostTrendChart filters={filters} />
+          </div>
+          <CostHeatmap filters={filters} />
+
+          <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
+          <EfficiencyKpiStrip filters={filters} />
+          <div className="grid grid-cols-2 gap-[10px]">
+            <TicketAgingChart filters={filters} />
+            <RecurringIssuesPanel filters={filters} />
+          </div>
         </div>
       </main>
     </div>
