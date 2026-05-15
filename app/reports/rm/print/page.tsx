@@ -3,6 +3,7 @@
 // Validates the HMAC token, calls buildReportPayload, renders 3 pages.
 import PageFrame from '@/components/print/PageFrame';
 import HeatmapPage from '@/components/print/HeatmapPage';
+import CostPerformancePage from '@/components/print/CostPerformancePage';
 import { verifyPrintToken } from '@/lib/printAuth';
 import { buildReportPayload, type ReportPayload } from '@/lib/buildReportPayload';
 import ReadyBeacon from './ReadyBeacon';
@@ -51,9 +52,7 @@ export default async function PrintPage({ searchParams }: Props) {
         pageMeta={payload.cost.topCategory ? `Top category: ${payload.cost.topCategory.name}` : undefined}
         period={period}
       >
-        <div data-placeholder-page="cost-performance" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 11 }}>
-          Cost Performance — placeholder (Task 6 wires real content)
-        </div>
+        <CostPerformancePage data={payload.cost} />
       </PageFrame>
 
       <PageFrame

@@ -237,3 +237,123 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   font-style: italic;
   color: #94a3b8;
 }
+
+/* ── Page 1 cost performance ──────────────────────────────────────── */
+.cp-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10pt;
+  flex: 1;
+}
+
+/* KPI strip */
+.cp-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6pt;
+}
+.cp-kpi {
+  border: 0.5pt solid #e5e7eb;
+  background: #f8fafc;
+  border-radius: 4pt;
+  padding: 8pt 10pt;
+  display: flex;
+  flex-direction: column;
+  gap: 3pt;
+}
+.cp-kpi-label {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.cp-kpi-value {
+  font-size: 14pt;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.1;
+}
+.cp-kpi-cat {
+  font-size: 11pt;
+}
+.cp-kpi-sub {
+  font-size: 7pt;
+  color: #475569;
+}
+.kpi-good { color: #15803d; font-weight: 600; }
+.kpi-bad  { color: #b91c1c; font-weight: 600; }
+.kpi-dim  { color: #94a3b8; }
+
+/* Chart row */
+.cp-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10pt;
+}
+.cp-chart-card {
+  border: 0.5pt solid #e5e7eb;
+  border-radius: 4pt;
+  padding: 8pt;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+}
+.cp-chart-title {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+/* Top Movers */
+.cp-movers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-left: 2.5pt solid #1e3a5f;
+  background: #f8fafc;
+  padding: 8pt 12pt;
+}
+.cp-movers-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+}
+.cp-movers-title {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  margin-bottom: 2pt;
+}
+.cp-movers-rising  { color: #b91c1c; }
+.cp-movers-falling { color: #15803d; }
+.cp-mover-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 8pt;
+  gap: 6pt;
+}
+.cp-mover-site {
+  color: #0f172a;
+}
+.cp-mover-code {
+  font-size: 6.5pt;
+  color: #94a3b8;
+  margin-right: 3pt;
+}
+.cp-mover-delta {
+  font-weight: 600;
+  font-size: 8pt;
+}
+.cp-good { color: #15803d; }
+.cp-bad  { color: #b91c1c; }
+.cp-movers-empty {
+  font-size: 7pt;
+  color: #94a3b8;
+  font-style: italic;
+}
