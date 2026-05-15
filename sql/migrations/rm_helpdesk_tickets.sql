@@ -13,9 +13,11 @@ CREATE TABLE IF NOT EXISTS rm_helpdesk_tickets (
   subject             TEXT NOT NULL,
   description_norm    TEXT GENERATED ALWAYS AS
                       (lower(trim(regexp_replace(subject, '\s+', ' ', 'g')))) STORED,
-  status              VARCHAR(20) NOT NULL,
-  priority            VARCHAR(20),
-  source              VARCHAR(20),
+  -- Short labels stored as TEXT — Freshdesk emits values like
+  -- 'Waiting on Third Party' (22 chars) that overflow tight VARCHAR caps.
+  status              TEXT NOT NULL,
+  priority            TEXT,
+  source              TEXT,
   ticket_group        VARCHAR(40),
   agent               VARCHAR(80),
   equipment           VARCHAR(40),
@@ -25,7 +27,7 @@ CREATE TABLE IF NOT EXISTS rm_helpdesk_tickets (
   resolved_time       TIMESTAMPTZ,
   closed_time         TIMESTAMPTZ,
   resolution_minutes  INTEGER,
-  resolution_status   VARCHAR(20),
+  resolution_status   TEXT,
   upload_log_id       BIGINT REFERENCES upload_log(id) ON DELETE SET NULL,
   source_file         VARCHAR(255),
   ingested_at         TIMESTAMPTZ DEFAULT NOW()
