@@ -72,7 +72,7 @@ export default function RMCommandCenterPage() {
 
         <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
         <CostKpiStrip filters={filters} />
-        <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
+        <div className="flex flex-col gap-[10px] mb-[10px]">
           <CostParetoChart filters={filters} />
           <CostTrendChart filters={filters} />
         </div>
