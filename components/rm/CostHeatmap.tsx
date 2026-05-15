@@ -63,6 +63,9 @@ export default function CostHeatmap({ filters }: Props) {
   const [metric, setMetric] = useState<Metric>('cost');
   const [showAll, setShowAll] = useState(false);
   const [drawerFilters, setDrawerFilters] = useState<InvoiceFilters | null>(null);
+  // Sort key: 'total' = site total cost desc (default).
+  // Otherwise a category slug — sites ordered by their spend in that category desc.
+  const [sortBy, setSortBy] = useState<string>('total');
 
   useEffect(() => {
     const qs = new URLSearchParams({
@@ -80,11 +83,23 @@ export default function CostHeatmap({ filters }: Props) {
       .finally(() => setLoading(false));
   }, [filters]);
 
-  const visibleSites = useMemo(() => {
+  const sortedSites = useMemo(() => {
     if (!data) return [];
-    const cap = showAll ? data.sites.length : 12;
-    return data.sites.slice(0, cap);
-  }, [data, showAll]);
+    if (sortBy === 'total') return data.sites;
+    const slug = sortBy;
+    // Sort sites by their spend in the chosen category desc; sites with no
+    // cell for that category fall to the bottom.
+    return [...data.sites].sort((a, b) => {
+      const aCost = data.matrix[a.siteCode]?.[slug]?.cost ?? -1;
+      const bCost = data.matrix[b.siteCode]?.[slug]?.cost ?? -1;
+      return bCost - aCost;
+    });
+  }, [data, sortBy]);
+
+  const visibleSites = useMemo(() => {
+    const cap = showAll ? sortedSites.length : 12;
+    return sortedSites.slice(0, cap);
+  }, [sortedSites, showAll]);
 
   // Show all categories — table scrolls horizontally on narrow viewports
   const displayCats = data?.categories ?? [];
@@ -127,12 +142,25 @@ export default function CostHeatmap({ filters }: Props) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px]">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
         <div className="text-[11px] font-medium text-gray-800">Site × Category Cost</div>
-        <div className="flex gap-0.5">
-          {metricToggle('cost',     '$ YTD')}
-          {metricToggle('perLitre', '¢/L')}
-          {metricToggle('zScore',   'z-score')}
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+            Sort
+            <select value={sortBy}
+                    onChange={e => setSortBy(e.target.value)}
+                    className="text-[11px] border border-gray-300 rounded px-1.5 py-0.5 font-normal normal-case tracking-normal">
+              <option value="total">Site total cost</option>
+              {data?.categories.map(c => (
+                <option key={c.slug} value={c.slug}>{c.name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex gap-0.5">
+            {metricToggle('cost',     '$ YTD')}
+            {metricToggle('perLitre', '¢/L')}
+            {metricToggle('zScore',   'z-score')}
+          </div>
         </div>
       </div>
 
