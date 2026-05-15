@@ -1,0 +1,114 @@
+/* app/reports/rm/print/print.css
+   Print-first stylesheet for the R&M PDF report. */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@page {
+  size: Letter portrait;
+  margin: 0;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  color-adjust: exact;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+/* ── Page container ───────────────────────────────────────────────── */
+.report-page {
+  width: 8.5in;
+  height: 11in;
+  padding: 0.5in 0.6in;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+.report-page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* ── Header strip ─────────────────────────────────────────────────── */
+.report-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 10pt;
+  margin-bottom: 14pt;
+  border-bottom: 1.5pt solid #1e3a5f;
+}
+.report-page-header-left  { flex: 1; }
+.report-page-header-right { text-align: right; }
+.report-eyebrow {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 1.4pt;
+  color: #1e3a5f;
+  margin-bottom: 4pt;
+}
+.report-page-title {
+  font-size: 17pt;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.15;
+}
+.report-period {
+  font-size: 8pt;
+  color: #64748b;
+}
+.report-page-meta {
+  font-size: 8pt;
+  color: #64748b;
+  margin-top: 2pt;
+}
+
+/* ── Body ─────────────────────────────────────────────────────────── */
+.report-page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10pt;
+}
+
+/* ── Footer strip ─────────────────────────────────────────────────── */
+.report-page-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8pt;
+  margin-top: 10pt;
+  border-top: 0.5pt solid #e5e7eb;
+}
+.report-footer-text {
+  font-size: 7pt;
+  letter-spacing: 0.3pt;
+  color: #94a3b8;
+}
+.report-footer-pageno {
+  font-size: 7pt;
+  color: #94a3b8;
+}
+
+/* ── Hide anything interactive ────────────────────────────────────── */
+input, select, button,
+.filter-bar, .sort-input, .toggle-group {
+  display: none !important;
+}
+
+/* ── Hide contentEditable placeholders ────────────────────────────── */
+[data-placeholder]:empty::before {
+  content: '' !important;
+}
+
+/* ── Don't split charts or table rows across pages ────────────────── */
+svg, canvas { break-inside: avoid; }
+table tr     { break-inside: avoid; page-break-inside: avoid; }
