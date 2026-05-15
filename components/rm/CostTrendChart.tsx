@@ -71,12 +71,12 @@ export default function CostTrendChart({ filters }: Props) {
   }, [merged]);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-md p-3 flex flex-col" style={{ minHeight: 280 }}>
+    <div className="bg-white border border-gray-200 rounded-md p-3 flex flex-col">
       <div className="text-[11px] font-medium text-gray-800 mb-2">
         Cost Trend — {data ? `${data.year} vs ${data.priorYear}` : 'YTD vs LY'}
       </div>
 
-      <div className="flex-1" style={{ minHeight: 220 }}>
+      <div style={{ height: 240 }}>
         {loading ? (
           <div className="h-full flex items-center justify-center text-xs text-gray-400">Loading…</div>
         ) : merged.length === 0 ? (
