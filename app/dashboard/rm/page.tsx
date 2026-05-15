@@ -66,7 +66,10 @@ export default function RMCommandCenterPage() {
         margin: 6,
         filename: `Redan-RM-Report-${filters.dateFrom}_to_${filters.dateTo}.pdf`,
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+        // Capture at a controlled viewport (1440px) so the table renders at
+        // the same density as the dashboard rather than stretching. scale 1.5
+        // keeps text sharp without bloating the canvas.
+        html2canvas: { scale: 1.5, useCORS: true, scrollY: 0, windowWidth: 1440 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
         pagebreak: { mode: ['css', 'legacy'] },
       }).from(root).save();
@@ -122,16 +125,18 @@ export default function RMCommandCenterPage() {
 
         <RMFilterBar value={filters} onChange={setFilters} />
 
-        {/* Notes editor — visible only in the app, not captured in the PDF. */}
+        {/* Notes editor — visible only in the app, not captured in the PDF.
+            Sits ABOVE the report for easy access while writing; the formatted
+            mirror inside the report appears BELOW the charts to fill page 1. */}
         <div className="card mb-4">
           <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1">
-            Report Notes — what drove the numbers this period?
-            <span className="ml-2 font-normal normal-case tracking-normal text-gray-400">(saved locally per date window)</span>
+            Report Notes — short overview of the charts above
+            <span className="ml-2 font-normal normal-case tracking-normal text-gray-400">(saved locally per date window · shows below Pareto + Trend in the PDF)</span>
           </label>
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            placeholder="e.g. Feb spike driven by emergency generator overhaul at ZIN-074 (invoice INV-12345, $28K). Pumps category running 22% above LY because we replaced 3 dispensers at GRE-023…"
+            placeholder="Short overview of the two charts: e.g. 'Spend tracking 4.3% above LY, mainly Capex on canopy replacements at GRE-023. 8 categories drive 80% of YTD; Pumps + Other lead at $81K and $69K. Feb was the YTD peak at $141K, well above the Feb-2025 baseline of $53K.'"
             className="w-full text-sm border border-gray-200 rounded p-2 min-h-[72px] resize-y focus:outline-none focus:border-[#1e3a5f]"
           />
         </div>
@@ -146,13 +151,6 @@ export default function RMCommandCenterPage() {
             <span className="float-right text-gray-400">Generated {new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
 
-          {notes.trim() && (
-            <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px] pdf-keep">
-              <div className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-2">Notes</div>
-              <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{notes}</div>
-            </div>
-          )}
-
           <div className="pdf-keep">
             <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
             <CostKpiStrip filters={filters} />
@@ -161,7 +159,18 @@ export default function RMCommandCenterPage() {
             <div className="pdf-keep"><CostParetoChart filters={filters} /></div>
             <div className="pdf-keep"><CostTrendChart filters={filters} /></div>
           </div>
-          <CostHeatmap filters={filters} />
+
+          {notes.trim() && (
+            <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px] pdf-keep">
+              <div className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-2">Overview</div>
+              <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{notes}</div>
+            </div>
+          )}
+
+          {/* Heatmap starts page 2 — too wide/tall to share a page cleanly. */}
+          <div className="pdf-page-break-before">
+            <CostHeatmap filters={filters} />
+          </div>
 
           <div className="pdf-page-break-before pdf-keep">
             <LensDivider label="EFFICIENCY LENS · OPERATIONAL" accent="efficiency" />
