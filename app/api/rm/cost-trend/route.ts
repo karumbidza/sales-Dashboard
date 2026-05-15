@@ -57,18 +57,23 @@ export async function GET(req: NextRequest) {
       [yearStart, nextYearStart, siteCode, territory],
     );
 
-    // Build 12-month arrays for both years + the current-year budget
+    // Build 12-month arrays for both years + the current-year budget.
+    // The rm_budget view stops at the current month, so we project the budget
+    // forward to the end of the year by carrying the most recent month's value
+    // — gives the chart a continuous annual envelope to compare against.
     const cy: { month: string; cost: number }[] = [];
     const py: { month: string; cost: number }[] = [];
     const bud: { month: string; cost: number }[] = [];
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    let lastBudget = 0;
     for (let m = 1; m <= 12; m++) {
       const cyRow  = rows.find(r => r.yr === year     && r.mo === m);
       const pyRow  = rows.find(r => r.yr === year - 1 && r.mo === m);
       const budRow = budgetRows.find(b => b.mo === m);
+      if (budRow) lastBudget = parseFloat(budRow.total);
       cy.push({  month: MONTHS[m - 1], cost: cyRow  ? parseFloat(cyRow.cost)  : 0 });
       py.push({  month: MONTHS[m - 1], cost: pyRow  ? parseFloat(pyRow.cost)  : 0 });
-      bud.push({ month: MONTHS[m - 1], cost: budRow ? parseFloat(budRow.total) : 0 });
+      bud.push({ month: MONTHS[m - 1], cost: lastBudget });
     }
 
     return NextResponse.json({
