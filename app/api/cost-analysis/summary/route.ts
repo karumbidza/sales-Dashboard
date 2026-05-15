@@ -85,11 +85,11 @@ export async function GET(req: NextRequest) {
         CASE WHEN SUM(ticket_count) > 0
              THEN ROUND(SUM(invoice_cost) / SUM(ticket_count), 2)
              ELSE NULL END                                        AS overall_cost_per_ticket,
-        COUNT(DISTINCT site_code) FILTER (WHERE ticket_count > 0) AS sites_with_tickets,
-        COUNT(DISTINCT site_code) FILTER (WHERE invoice_cost > 0) AS sites_with_invoices,
+        COUNT(DISTINCT site_code) FILTER (WHERE ticket_count > 0)::INT AS sites_with_tickets,
+        COUNT(DISTINCT site_code) FILTER (WHERE invoice_cost > 0)::INT AS sites_with_invoices,
         COUNT(DISTINCT site_code) FILTER (
           WHERE ticket_count > 0 AND invoice_cost > 0
-        )                                                          AS sites_with_both
+        )::INT                                                          AS sites_with_both
       FROM cells
     `;
 
