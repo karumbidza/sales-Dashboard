@@ -66,6 +66,29 @@ export default function CostHeatmap({ filters }: Props) {
   // Sort key: 'total' = site total cost desc (default).
   // Otherwise a category slug — sites ordered by their spend in that category desc.
   const [sortBy, setSortBy] = useState<string>('total');
+  // Per-site free-text notes — persisted to localStorage keyed by
+  // site + date window. Shows in the column just before Total, and
+  // is captured in the PDF as static text.
+  const [siteNotes, setSiteNotes] = useState<Record<string, string>>({});
+  const notesKeyPrefix = `rm-site-note-${filters.dateFrom}-${filters.dateTo}`;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !data) return;
+    const map: Record<string, string> = {};
+    for (const s of data.sites) {
+      const v = localStorage.getItem(`${notesKeyPrefix}-${s.siteCode}`);
+      if (v) map[s.siteCode] = v;
+    }
+    setSiteNotes(map);
+  }, [data, notesKeyPrefix]);
+
+  function updateSiteNote(siteCode: string, value: string) {
+    setSiteNotes(prev => ({ ...prev, [siteCode]: value }));
+    if (typeof window === 'undefined') return;
+    const k = `${notesKeyPrefix}-${siteCode}`;
+    if (value) localStorage.setItem(k, value);
+    else       localStorage.removeItem(k);
+  }
 
   useEffect(() => {
     const qs = new URLSearchParams({
@@ -179,6 +202,7 @@ export default function CostHeatmap({ filters }: Props) {
                     {c.name.split(/\s+/)[0]}
                   </th>
                 ))}
+                <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold w-[200px]">Note</th>
                 <th className="text-right px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Total</th>
               </tr>
             </thead>
@@ -209,6 +233,15 @@ export default function CostHeatmap({ filters }: Props) {
                       </td>
                     );
                   })}
+                  <td className="px-1.5 py-0.5 w-[200px]">
+                    <input
+                      type="text"
+                      value={siteNotes[s.siteCode] || ''}
+                      onChange={e => updateSiteNote(s.siteCode, e.target.value)}
+                      placeholder="add note…"
+                      className="w-full text-[11px] border border-gray-200 rounded px-1.5 py-1 placeholder-gray-300 focus:outline-none focus:border-[#1e3a5f]"
+                    />
+                  </td>
                   <td className="px-2 py-1 text-right font-medium text-gray-900 whitespace-nowrap">
                     {fmtCurrency(s.total)}
                   </td>
@@ -223,6 +256,7 @@ export default function CostHeatmap({ filters }: Props) {
                     {fmtCurrency(c.total)}
                   </td>
                 ))}
+                <td className="px-2 py-1.5 w-[200px]"></td>
                 <td className="px-2 py-1.5 text-right text-[11px] font-semibold text-gray-900 whitespace-nowrap">
                   {fmtCurrency(data.categories.reduce((a, b) => a + b.total, 0))}
                 </td>
