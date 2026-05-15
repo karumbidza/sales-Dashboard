@@ -130,6 +130,7 @@ function RulesPageInner() {
           <span                               className="px-4 py-2 text-xs font-medium rounded-t-md bg-[#f4f6f9] text-[#1e3a5f]">Rules</span>
           <Link href="/dashboard/helpdesk"    className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Helpdesk</Link>
           <Link href="/dashboard/cost-analysis" className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Cost Analysis</Link>
+          <Link href="/dashboard/monthly-report" className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Monthly Report</Link>
         </div>
       </header>
 
