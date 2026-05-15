@@ -969,7 +969,7 @@ async function ingestHelpdesk(body: any): Promise<NextResponse> {
           uploadId, fileName,
         ]);
       } else {
-        unmatched.push([r.site_code, r.created_time, 'R & M HELPDESK', fileName, uploadId]);
+        unmatched.push([r.site_code, r.created_time.slice(0, 10), 'R & M HELPDESK', fileName, uploadId]);
       }
     }
 
