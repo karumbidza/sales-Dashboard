@@ -53,7 +53,9 @@ test('CATEGORY_SLUGS list matches the seed taxonomy', () => {
   const expected = [
     'pumps_dispensers', 'compressors_air', 'tanks_lines', 'generators',
     'solar_ups', 'electrical_lighting', 'plumbing_water_waste', 'building_civil',
-    'canopy_signage', 'landscaping_grounds', 'fire_safety', 'security_cctv', 'other',
+    'canopy_signage', 'landscaping_grounds', 'fire_safety', 'security_cctv',
+    'vehicles', 'labour_wages', 'cleaning_services', 'capex_amortization',
+    'other',
   ];
   assert.deepEqual(CATEGORY_SLUGS, expected);
 });
