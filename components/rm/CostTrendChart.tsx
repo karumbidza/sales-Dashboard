@@ -78,7 +78,7 @@ export default function CostTrendChart({ filters }: Props) {
         Cost Trend — {data ? `${data.year} vs ${data.priorYear}` : 'YTD vs LY'}
       </div>
 
-      <div style={{ height: 320 }}>
+      <div style={{ height: 280 }}>
         {loading ? (
           <div className="h-full flex items-center justify-center text-xs text-gray-400">Loading…</div>
         ) : merged.length === 0 ? (

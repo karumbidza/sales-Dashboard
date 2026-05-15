@@ -187,6 +187,19 @@ export default function CostHeatmap({ filters }: Props) {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 border-t border-gray-200">
+                <td className="px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-600 font-semibold">Total</td>
+                {displayCats.map(c => (
+                  <td key={c.slug} className="px-1.5 py-1.5 text-right text-[11px] font-semibold text-gray-900 whitespace-nowrap" title={`${c.name}: ${fmtCurrency(c.total)}`}>
+                    {fmtCurrency(c.total)}
+                  </td>
+                ))}
+                <td className="px-2 py-1.5 text-right text-[11px] font-semibold text-gray-900 whitespace-nowrap">
+                  {fmtCurrency(data.categories.reduce((a, b) => a + b.total, 0))}
+                </td>
+              </tr>
+            </tfoot>
           </table>
 
           {!showAll && data.sites.length > 12 && (

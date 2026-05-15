@@ -76,7 +76,7 @@ export default function CostParetoChart({ filters }: Props) {
         </div>
       </div>
 
-      <div style={{ height: 320 }}>
+      <div style={{ height: 280 }}>
         {loading ? (
           <div className="h-full flex items-center justify-center text-xs text-gray-400">Loading…</div>
         ) : items.length === 0 ? (
