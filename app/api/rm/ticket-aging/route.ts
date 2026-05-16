@@ -1,5 +1,5 @@
 // app/api/rm/ticket-aging/route.ts
-// Open-ticket aging buckets: 0-30, 31-60, 61-90, 90+ days, broken down by priority.
+// Open-ticket aging buckets: 0-30, 31-60, 61-90, 90+ days, broken down by priority and status.
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
@@ -12,8 +12,9 @@ export async function GET(req: NextRequest) {
     const siteCode  = sp.get('siteCode')  || '';
     const category  = sp.get('category')  || '';
 
-    const rows = await query<{ priority: string | null; days: number }>(
+    const rows = await query<{ priority: string | null; status: string | null; days: number }>(
       `SELECT COALESCE(tk.priority, 'Unspecified') AS priority,
+              COALESCE(tk.status,   'Unspecified') AS status,
               (CURRENT_DATE - tk.created_time::DATE)::INT AS days
          FROM rm_helpdesk_tickets tk
          JOIN sites s ON tk.site_code = s.site_code
@@ -37,10 +38,12 @@ export async function GET(req: NextRequest) {
     const result = buckets.map(b => {
       const inBucket = rows.filter(r => r.days >= b.min && r.days <= b.max);
       const byPriority: Record<string, number> = {};
+      const byStatus: Record<string, number> = {};
       for (const r of inBucket) {
         byPriority[r.priority || 'Unspecified'] = (byPriority[r.priority || 'Unspecified'] || 0) + 1;
+        byStatus[r.status || 'Unspecified'] = (byStatus[r.status || 'Unspecified'] || 0) + 1;
       }
-      return { bucket: b.bucket, count: inBucket.length, byPriority };
+      return { bucket: b.bucket, count: inBucket.length, byPriority, byStatus };
     });
 
     const oldest = rows.length > 0 ? Math.max(...rows.map(r => r.days)) : 0;
