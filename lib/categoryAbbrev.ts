@@ -14,12 +14,15 @@ const ABBREV: Record<string, string> = {
   electrical:   'ELEC',
   plumbing:     'PLUMB',
   building:     'BUILD',
-  canopy:       'CANOPY',
-  landscaping:  'GROUND',
+  canopy:       'CANPY',
+  landscaping:  'LAND',
   fire:         'FIRE',
   security:     'CCTV',
   other:        'OTHER',
   capex:        'CAPEX',
+  labour:       'LABR',
+  vehicles:     'AUTO',
+  cleaning:     'CLEAN',
 };
 
 export function shortCategory(name: string): string {

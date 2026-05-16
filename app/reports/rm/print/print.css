@@ -135,21 +135,21 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   border-collapse: collapse;
   table-layout: fixed;
 }
-/* Landscape Letter usable width is ~9.8in / 706pt — enough for 13
-   category columns and a real Notes column. */
-.hm-col-site  { width: 11%; }
-.hm-col-note  { width: 24%; }
+/* Landscape Letter usable width is ~9.8in / 706pt.
+   With 13–17 category columns plus SITE/NOTES/TOTAL, every percent
+   counts — NOTES trimmed back to 17% so headers + totals don't
+   collide on wide periods. */
+.hm-col-site  { width: 10%; }
+.hm-col-note  { width: 17%; }
 .hm-col-total { width: 6%; }
 
 .hm-th {
-  font-size: 6.5pt;
+  font-size: 6pt;
   font-weight: 700;
   color: #475569;
-  letter-spacing: 0.4pt;
-  /* Generous header padding — gives the column titles real breathing
-     room before the first data row, and keeps the column rules visually
-     separated from the body. Bottom padding > top padding because of
-     the 0.75pt rule under the header. */
+  letter-spacing: 0.3pt;
+  /* Vertical 9pt/8pt for breathing room above and below; horizontal 4pt
+     gives each column header clear separation from its neighbours. */
   padding: 9pt 4pt 8pt;
   text-align: right;
   white-space: normal;
@@ -163,13 +163,26 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
 .hm-th-total { text-align: right; white-space: nowrap; }
 
 .hm-td {
-  font-size: 7.5pt;
-  /* Doubled the vertical padding (was 4pt) — with the heatmap split
-     across two pages each shows ~10 sites, leaving plenty of room to
-     give every row real air. Horizontal padding bumped 3pt → 4pt. */
+  /* 6.5pt body fits "$93.6K" in a 30pt-wide category column with
+     4pt horizontal padding on each side. 7pt was too tight at the
+     totals row. */
+  font-size: 6.5pt;
   padding: 8pt 4pt;
   border-bottom: 0.5pt solid #f1f5f9;
   vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle vertical hairline between value columns — gives the header
+   and totals rows visible column-by-column separation that the body
+   gets for free from the colored backgrounds. */
+.hm-th-cat   + .hm-th-cat,
+.hm-td-val   + .hm-td-val,
+.hm-th-cat   + .hm-th-note,
+.hm-td-val   + .hm-td-note,
+.hm-th-note  + .hm-th-total,
+.hm-td-note  + .hm-td-total {
+  border-left: 0.5pt solid #f1f5f9;
 }
 .hm-td-site {
   text-align: left;
@@ -215,8 +228,9 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #1e3a5f;
   font-weight: 700;
   background: #f8fafc;
-  padding: 10pt 4pt;
-  font-size: 8pt;
+  padding: 9pt 4pt;
+  font-size: 7pt;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Quintile colors */
