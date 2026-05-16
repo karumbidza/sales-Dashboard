@@ -18,6 +18,12 @@ function bad(message: string, status = 400) {
 }
 
 function baseUrl(req: NextRequest): string {
+  // Prefer VERCEL_PROJECT_PRODUCTION_URL (the public alias) over
+  // VERCEL_URL (the deployment-specific URL which inherits preview
+  // protection on Pro plans — internal fetches to it 401).
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL;
   // Last resort: derive from the request.
