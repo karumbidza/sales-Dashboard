@@ -104,14 +104,19 @@ async function getJSON<T>(path: string): Promise<T> {
 export async function buildReportPayload(filters: ReportFilters): Promise<ReportPayload> {
   const queryStr = qs(filters);
 
-  // ── Fetch all existing endpoints in parallel ─────────────────────
+  // ── Fetch HTTP endpoints + DB notes in parallel ──────────────────
+  // Notes are pulled directly from Postgres (not via /api/rm/notes)
+  // because the API does exact-period match, but reports often span
+  // a different range than the period a note was written for. The
+  // PDF picks up any note whose period overlaps the report range,
+  // taking the most recent per site.
   const [
     kpisCost,
     pareto,
     trend,
     topMovers,
     heatmap,
-    notes,
+    notesRows,
     kpisEff,
     aging,
     recurring,
@@ -121,11 +126,19 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     getJSON<any>(`/api/rm/cost-trend?${queryStr}`),
     getJSON<any>(`/api/rm/top-movers?${queryStr}`),
     getJSON<any>(`/api/rm/cost-heatmap?${queryStr}`),
-    getJSON<any>(`/api/rm/notes?dateFrom=${filters.dateFrom}&dateTo=${filters.dateTo}`),
+    query<{ site_code: string; note_text: string }>(
+      `SELECT DISTINCT ON (site_code) site_code, note_text
+         FROM rm_site_notes
+        WHERE period_from <= $2::DATE AND period_to >= $1::DATE
+        ORDER BY site_code, period_to DESC, updated_at DESC`,
+      [filters.dateFrom, filters.dateTo],
+    ),
     getJSON<any>(`/api/rm/kpis-efficiency?${queryStr}`),
     getJSON<any>(`/api/rm/ticket-aging?${queryStr}`),
     getJSON<any>(`/api/rm/recurring-issues?${queryStr}&limit=4`),
   ]);
+  // Reshape notesRows to match the previous `notes.data` shape.
+  const notes = { data: notesRows.map(r => ({ siteCode: r.site_code, note: r.note_text })) };
 
   // ── Heatmap: top 20 sites with notes, rest rolled up ─────────────
   const hm = heatmap.data;
