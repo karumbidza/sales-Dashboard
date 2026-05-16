@@ -1,0 +1,545 @@
+/* app/reports/rm/print/print.css
+   Print-first stylesheet for the R&M PDF report. */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@page {
+  size: Letter portrait;
+  margin: 0;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  color-adjust: exact;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+/* ── Page container ───────────────────────────────────────────────── */
+.report-page {
+  width: 8.5in;
+  height: 11in;
+  padding: 0.5in 0.6in;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+.report-page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* ── Header strip ─────────────────────────────────────────────────── */
+.report-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 10pt;
+  margin-bottom: 14pt;
+  border-bottom: 1.5pt solid #1e3a5f;
+}
+.report-page-header-left  { flex: 1; }
+.report-page-header-right { text-align: right; }
+.report-eyebrow {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 1.4pt;
+  color: #1e3a5f;
+  margin-bottom: 4pt;
+}
+.report-page-title {
+  font-size: 17pt;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.15;
+}
+.report-period {
+  font-size: 8pt;
+  color: #64748b;
+}
+.report-page-meta {
+  font-size: 8pt;
+  color: #64748b;
+  margin-top: 2pt;
+}
+
+/* ── Body ─────────────────────────────────────────────────────────── */
+.report-page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10pt;
+}
+
+/* ── Footer strip ─────────────────────────────────────────────────── */
+.report-page-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8pt;
+  margin-top: 10pt;
+  border-top: 0.5pt solid #e5e7eb;
+}
+.report-footer-text {
+  font-size: 7pt;
+  letter-spacing: 0.3pt;
+  color: #94a3b8;
+}
+.report-footer-pageno {
+  font-size: 7pt;
+  color: #94a3b8;
+}
+
+/* ── Hide anything interactive ────────────────────────────────────── */
+input, select, button,
+.filter-bar, .sort-input, .toggle-group {
+  display: none !important;
+}
+
+/* ── Hide contentEditable placeholders ────────────────────────────── */
+[data-placeholder]:empty::before {
+  content: '' !important;
+}
+
+/* ── Don't split charts or table rows across pages ────────────────── */
+svg, canvas { break-inside: avoid; }
+table tr     { break-inside: avoid; page-break-inside: avoid; }
+
+/* ── Page 2 heatmap ───────────────────────────────────────────────── */
+.hm-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8pt;
+  flex: 1;
+}
+.hm {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.hm-col-note  { width: 28%; }
+.hm-col-total { width: 6%; }
+
+.hm-th {
+  font-size: 6.5pt;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.5pt;
+  padding: 5pt 3pt;
+  text-align: right;
+  white-space: nowrap;
+}
+.hm-th-site { text-align: left; }
+.hm-th-cat  { text-align: right; }
+.hm-th-note { text-align: left; }
+.hm-th-total { text-align: right; }
+
+.hm-td {
+  font-size: 7.5pt;
+  padding: 4pt 3pt;
+  border-bottom: 0.5pt solid #f1f5f9;
+  vertical-align: middle;
+}
+.hm-td-site {
+  white-space: nowrap;
+  text-align: left;
+}
+.hm-site-code {
+  font-size: 6.5pt;
+  color: #94a3b8;
+  margin-right: 4pt;
+  font-family: 'Inter', monospace;
+}
+.hm-site-name {
+  font-weight: 600;
+  font-size: 8.5pt;
+}
+.hm-td-val {
+  text-align: right;
+  color: #0f172a;
+}
+.hm-td-note {
+  font-size: 7.2pt;
+  font-style: italic;
+  color: #475569;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+}
+.hm-td-total {
+  text-align: right;
+  font-weight: 600;
+}
+
+/* tfoot row */
+.hm-tfoot-row .hm-td {
+  border-top: 1pt solid #1e3a5f;
+  border-bottom: none;
+  color: #1e3a5f;
+  font-weight: 700;
+  background: #f8fafc;
+}
+
+/* Quintile colors */
+.hm td.c1 { background-color: #d1fae5; }
+.hm td.c2 { background-color: #ecfccb; }
+.hm td.c3 { background-color: #fef9c3; }
+.hm td.c4 { background-color: #fed7aa; }
+.hm td.c5 { background-color: #fecaca; }
+
+/* Legend */
+.hm-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12pt;
+  font-size: 7pt;
+  color: #64748b;
+}
+.hm-legend-left {
+  display: flex;
+  align-items: center;
+  gap: 4pt;
+}
+.hm-legend-label {
+  font-weight: 700;
+  color: #475569;
+  margin-right: 4pt;
+  letter-spacing: 0.4pt;
+}
+.hm-legend-end {
+  font-size: 7pt;
+}
+.hm-swatch {
+  display: inline-block;
+  width: 14pt;
+  height: 9pt;
+  border: 0.5pt solid #e5e7eb;
+}
+.hm-swatch.c1 { background-color: #d1fae5; }
+.hm-swatch.c2 { background-color: #ecfccb; }
+.hm-swatch.c3 { background-color: #fef9c3; }
+.hm-swatch.c4 { background-color: #fed7aa; }
+.hm-swatch.c5 { background-color: #fecaca; }
+.hm-legend-note {
+  margin-left: 8pt;
+  color: #94a3b8;
+}
+.hm-legend-right {
+  font-style: italic;
+  color: #94a3b8;
+}
+
+/* ── Page 1 cost performance ──────────────────────────────────────── */
+.cp-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10pt;
+  flex: 1;
+}
+
+/* KPI strip */
+.cp-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6pt;
+}
+.cp-kpi {
+  border: 0.5pt solid #e5e7eb;
+  background: #f8fafc;
+  border-radius: 4pt;
+  padding: 8pt 10pt;
+  display: flex;
+  flex-direction: column;
+  gap: 3pt;
+}
+.cp-kpi-label {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.cp-kpi-value {
+  font-size: 14pt;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.1;
+}
+.cp-kpi-cat {
+  font-size: 11pt;
+}
+.cp-kpi-sub {
+  font-size: 7pt;
+  color: #475569;
+}
+.kpi-good { color: #15803d; font-weight: 600; }
+.kpi-bad  { color: #b91c1c; font-weight: 600; }
+.kpi-dim  { color: #94a3b8; }
+
+/* Chart row */
+.cp-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10pt;
+}
+.cp-chart-card {
+  border: 0.5pt solid #e5e7eb;
+  border-radius: 4pt;
+  padding: 8pt;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+}
+.cp-chart-title {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+/* Top Movers */
+.cp-movers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-left: 2.5pt solid #1e3a5f;
+  background: #f8fafc;
+  padding: 8pt 12pt;
+}
+.cp-movers-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+}
+.cp-movers-title {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  margin-bottom: 2pt;
+}
+.cp-movers-rising  { color: #b91c1c; }
+.cp-movers-falling { color: #15803d; }
+.cp-mover-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 8pt;
+  gap: 6pt;
+}
+.cp-mover-site {
+  color: #0f172a;
+}
+.cp-mover-code {
+  font-size: 6.5pt;
+  color: #94a3b8;
+  margin-right: 3pt;
+}
+.cp-mover-delta {
+  font-weight: 600;
+  font-size: 8pt;
+}
+.cp-good { color: #15803d; }
+.cp-bad  { color: #b91c1c; }
+.cp-movers-empty {
+  font-size: 7pt;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* ── Page 3 efficiency ────────────────────────────────────────────── */
+.ep-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10pt;
+  flex: 1;
+}
+
+/* KPI strip with orange top accent */
+.ep-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6pt;
+}
+.ep-kpi {
+  border: 0.5pt solid #e5e7eb;
+  border-top: 2.5pt solid #ea580c;
+  background: #f8fafc;
+  border-radius: 4pt;
+  padding: 8pt 10pt;
+  display: flex;
+  flex-direction: column;
+  gap: 3pt;
+}
+.ep-kpi-label {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.ep-kpi-value {
+  font-size: 14pt;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.1;
+}
+.ep-kpi-sub {
+  font-size: 7pt;
+  color: #475569;
+}
+
+/* Aging + Recurring panels */
+.ep-row {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 10pt;
+}
+.ep-panel {
+  border: 0.5pt solid #e5e7eb;
+  border-radius: 4pt;
+  padding: 8pt;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 6pt;
+}
+.ep-panel-title {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+/* Aging bars */
+.ep-aging-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6pt;
+  flex: 1;
+  justify-content: center;
+}
+.ep-aging-row {
+  display: flex;
+  align-items: center;
+  gap: 6pt;
+}
+.ep-aging-label {
+  font-size: 8pt;
+  font-weight: 500;
+  color: #475569;
+  width: 36pt;
+}
+.ep-aging-bar-wrap {
+  flex: 1;
+  height: 14pt;
+  background: #f1f5f9;
+  border-radius: 2pt;
+  overflow: hidden;
+}
+.ep-aging-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2pt;
+}
+.ep-aging-count {
+  font-size: 8pt;
+  font-weight: 600;
+  color: #0f172a;
+  width: 24pt;
+  text-align: right;
+}
+
+/* Recurring table */
+.ep-rec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 7.5pt;
+}
+.ep-rec-table th {
+  text-align: left;
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #64748b;
+  padding: 3pt 4pt;
+  border-bottom: 0.5pt solid #e5e7eb;
+}
+.ep-rec-right { text-align: right; }
+.ep-rec-num   { font-weight: 600; }
+.ep-rec-table td {
+  padding: 4pt;
+  border-bottom: 0.5pt solid #f1f5f9;
+  vertical-align: top;
+}
+.ep-rec-subject {
+  color: #0f172a;
+  line-height: 1.25;
+}
+.ep-rec-cat {
+  font-size: 6.5pt;
+  color: #94a3b8;
+  margin-top: 1pt;
+}
+
+/* Empty states inside panels */
+.ep-empty {
+  font-size: 7pt;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Three callouts */
+.ep-callouts {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6pt;
+}
+.ep-callout {
+  border: 0.5pt solid #e5e7eb;
+  border-radius: 4pt;
+  padding: 8pt 10pt;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 3pt;
+}
+.ep-callout-title {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #ea580c;
+}
+.ep-callout-site {
+  font-size: 8pt;
+  color: #0f172a;
+  font-weight: 600;
+}
+.ep-callout-code {
+  font-size: 6.5pt;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-right: 3pt;
+}
+.ep-callout-detail {
+  font-size: 8pt;
+  color: #475569;
+}
+.ep-callout-strong {
+  font-weight: 600;
+  color: #0f172a;
+}

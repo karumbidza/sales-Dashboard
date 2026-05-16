@@ -117,28 +117,70 @@ export default function CostHeatmap({
   // Sort key: 'total' = site total cost desc (default).
   // Otherwise a category slug — sites ordered by their spend in that category desc.
   const [sortBy, setSortBy] = useState<string>('total');
-  // Per-site free-text notes — persisted to localStorage keyed by
-  // site + date window. Shows in the column just before Total, and
-  // is captured in the PDF as static text.
+  // Per-site free-text notes — persisted to the rm_site_notes DB table.
+  // Shows in the column just before Total, and is captured in the PDF
+  // as static text.
   const [siteNotes, setSiteNotes] = useState<Record<string, string>>({});
-  const notesKeyPrefix = `rm-site-note-${filters.dateFrom}-${filters.dateTo}`;
 
   useEffect(() => {
     if (typeof window === 'undefined' || !data) return;
-    const map: Record<string, string> = {};
-    for (const s of data.sites) {
-      const v = localStorage.getItem(`${notesKeyPrefix}-${s.siteCode}`);
-      if (v) map[s.siteCode] = v;
-    }
-    setSiteNotes(map);
-  }, [data, notesKeyPrefix]);
+    let cancelled = false;
+    (async () => {
+      // 1. Load from API
+      const res = await fetch(`/api/rm/notes?dateFrom=${filters.dateFrom}&dateTo=${filters.dateTo}`);
+      const json = await res.json();
+      if (cancelled) return;
+      const apiMap: Record<string, string> = {};
+      for (const r of json?.data || []) apiMap[r.siteCode] = r.note;
+
+      // 2. One-shot migration: any local notes the API doesn't have
+      const merged = { ...apiMap };
+      const toMigrate: Array<{ siteCode: string; note: string }> = [];
+      for (const s of data.sites) {
+        const local = localStorage.getItem(`rm-site-note-${filters.dateFrom}-${filters.dateTo}-${s.siteCode}`);
+        if (local && !apiMap[s.siteCode]) {
+          merged[s.siteCode] = local;
+          toMigrate.push({ siteCode: s.siteCode, note: local });
+        }
+      }
+      setSiteNotes(merged);
+
+      // 3. Fire-and-forget migration POSTs
+      for (const m of toMigrate) {
+        fetch('/api/rm/notes', {
+          method:  'POST',
+          headers: { 'content-type': 'application/json' },
+          body:    JSON.stringify({
+            siteCode: m.siteCode,
+            dateFrom: filters.dateFrom,
+            dateTo:   filters.dateTo,
+            note:     m.note,
+          }),
+        }).catch(() => {});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [data, filters.dateFrom, filters.dateTo]);
 
   function updateSiteNote(siteCode: string, value: string) {
     setSiteNotes(prev => ({ ...prev, [siteCode]: value }));
-    if (typeof window === 'undefined') return;
-    const k = `${notesKeyPrefix}-${siteCode}`;
-    if (value) localStorage.setItem(k, value);
-    else       localStorage.removeItem(k);
+    // Keep localStorage write as one-release fallback.
+    if (typeof window !== 'undefined') {
+      const k = `rm-site-note-${filters.dateFrom}-${filters.dateTo}-${siteCode}`;
+      if (value) localStorage.setItem(k, value);
+      else       localStorage.removeItem(k);
+    }
+    // Persist to API (fire-and-forget — state is already updated optimistically).
+    fetch('/api/rm/notes', {
+      method:  'POST',
+      headers: { 'content-type': 'application/json' },
+      body:    JSON.stringify({
+        siteCode,
+        dateFrom: filters.dateFrom,
+        dateTo:   filters.dateTo,
+        note:     value,
+      }),
+    }).catch(() => {});
   }
 
   useEffect(() => {

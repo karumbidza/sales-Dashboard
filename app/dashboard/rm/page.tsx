@@ -66,21 +66,32 @@ export default function RMCommandCenterPage() {
     if (generating) return;
     setGenerating(true);
     try {
-      const root = document.getElementById('rm-report-root');
-      if (!root) return;
-      const mod = await import('html2pdf.js');
-      const html2pdf = (mod as any).default ?? mod;
-      await html2pdf().set({
-        margin: 6,
-        filename: `Redan-RM-Report-${filters.dateFrom}_to_${filters.dateTo}.pdf`,
-        image: { type: 'jpeg', quality: 0.95 },
-        // Capture at a controlled viewport (1440px) so the table renders at
-        // the same density as the dashboard rather than stretching. scale 1.5
-        // keeps text sharp without bloating the canvas.
-        html2canvas: { scale: 1.5, useCORS: true, scrollY: 0, windowWidth: 1440 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        pagebreak: { mode: ['css', 'legacy'] },
-      }).from(root).save();
+      const res = await fetch('/api/reports/rm/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          territory: filters.territory || undefined,
+          siteCode: filters.siteCode || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`PDF generation failed: ${err.error || res.statusText}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Redan-RM-Report-${filters.dateFrom}_to_${filters.dateTo}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`PDF generation failed: ${e.message || 'unknown error'}`);
     } finally {
       setGenerating(false);
     }
@@ -123,13 +134,8 @@ export default function RMCommandCenterPage() {
       </header>
 
       <main className="max-w-screen-2xl mx-auto px-6 py-5">
-        {/* PDF page-break rules — scoped to #rm-report-root so they only fire
-            when html2pdf captures the report. */}
+        {/* contentEditable placeholder for the heatmap's per-site note cells */}
         <style>{`
-          #rm-report-root tr { break-inside: avoid; page-break-inside: avoid; }
-          #rm-report-root .pdf-keep { break-inside: avoid; page-break-inside: avoid; }
-          #rm-report-root .pdf-page-break-before { break-before: page; page-break-before: always; }
-          /* Placeholder for the contentEditable note cells in CostHeatmap. */
           .rm-note-cell:empty::before {
             content: attr(data-placeholder);
             color: #d1d5db;
@@ -155,8 +161,8 @@ export default function RMCommandCenterPage() {
           />
         </div>
 
-        <div id="rm-report-root">
-          <div className="bg-white border border-gray-200 rounded-md px-3 py-2 mb-[10px] text-[10px] text-gray-600 pdf-keep">
+        <div>
+          <div className="bg-white border border-gray-200 rounded-md px-3 py-2 mb-[10px] text-[10px] text-gray-600">
             <span className="font-semibold uppercase tracking-wide text-gray-500 mr-2">Report window</span>
             {filters.dateFrom} → {filters.dateTo}
             {filters.territory && <span> · Territory: <span className="font-medium">{filters.territory}</span></span>}
@@ -165,24 +171,24 @@ export default function RMCommandCenterPage() {
             <span className="float-right text-gray-400">Generated {new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
 
-          <div className="pdf-keep">
+          <div>
             <LensDivider label="COST LENS · FINANCIAL" accent="cost" />
             <CostKpiStrip filters={filters} />
           </div>
           <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
-            <div className="pdf-keep"><CostParetoChart filters={filters} /></div>
-            <div className="pdf-keep"><CostTrendChart filters={filters} /></div>
+            <div><CostParetoChart filters={filters} /></div>
+            <div><CostTrendChart filters={filters} /></div>
           </div>
 
           {notes.trim() && (
-            <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px] pdf-keep">
+            <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px]">
               <div className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-2">Overview</div>
               <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{notes}</div>
             </div>
           )}
 
-          {/* Page 2 — top 20 sites for the selected window, with per-site notes. */}
-          <div className="pdf-page-break-before">
+          {/* Top 20 sites for the selected window, with per-site notes. */}
+          <div>
             <CostHeatmap
               filters={filters}
               mode="commented"
@@ -191,8 +197,8 @@ export default function RMCommandCenterPage() {
             />
           </div>
 
-          {/* Page 3 — full YTD list, no notes, always all sites. */}
-          <div className="pdf-page-break-before">
+          {/* Full YTD list, no notes, always all sites. */}
+          <div>
             <CostHeatmap
               filters={{ ...filters, dateFrom: ytdFilters.dateFrom, dateTo: ytdFilters.dateTo }}
               mode="plain"
@@ -200,14 +206,14 @@ export default function RMCommandCenterPage() {
             />
           </div>
 
-          {/* Page 4 — Helpdesk / efficiency. */}
-          <div className="pdf-page-break-before pdf-keep">
+          {/* Helpdesk / efficiency. */}
+          <div>
             <LensDivider label="EFFICIENCY LENS · OPERATIONAL · HELPDESK" accent="efficiency" />
             <EfficiencyKpiStrip filters={filters} />
           </div>
           <div className="grid grid-cols-2 gap-[10px]">
-            <div className="pdf-keep"><TicketAgingChart filters={filters} /></div>
-            <div className="pdf-keep"><RecurringIssuesPanel filters={filters} /></div>
+            <div><TicketAgingChart filters={filters} /></div>
+            <div><RecurringIssuesPanel filters={filters} /></div>
           </div>
         </div>
       </main>

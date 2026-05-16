@@ -9,7 +9,13 @@ export async function middleware(req: NextRequest) {
   // Always allow login page and all API routes.
   // Pages are auth-gated by the middleware below; API routes are only
   // called from those authenticated pages (or server-to-server).
-  if (pathname.startsWith(LOGIN) || pathname.startsWith('/api/')) {
+  // /reports/rm/print is guarded by HMAC token (printAuth.ts) so it
+  // must bypass session middleware — Puppeteer has no session cookie.
+  if (
+    pathname.startsWith(LOGIN) ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/reports/')
+  ) {
     return NextResponse.next();
   }
 
