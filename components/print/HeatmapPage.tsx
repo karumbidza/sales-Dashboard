@@ -44,7 +44,7 @@ export default function HeatmapPage({ data }: Props) {
     <div className="hm-wrap">
       <table className="hm">
         <colgroup>
-          <col style={{ width: '13%' }} />
+          <col className="hm-col-site" />
           {data.categories.map((_, i) => (
             <col key={i} />
           ))}

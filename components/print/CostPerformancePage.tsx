@@ -115,10 +115,10 @@ export default function CostPerformancePage({ data }: Props) {
                 />
                 <YAxis yAxisId="left"  tick={{ fontSize: 8 }} tickFormatter={(v) => fmtCurrency(v)} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 8 }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                <Bar yAxisId="left" dataKey="value">
+                <Bar yAxisId="left" dataKey="value" isAnimationActive={false}>
                   {paretoData.map((p, i) => <Cell key={i} fill={TIER_COLOR[p.tier]} />)}
                 </Bar>
-                <Line yAxisId="right" type="monotone" dataKey="cumulativePct" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} />
+                <Line yAxisId="right" type="monotone" dataKey="cumulativePct" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
                 <ReferenceLine yAxisId="right" y={80} stroke="#dc2626" strokeDasharray="4 3" />
               </ComposedChart>
             </ResponsiveContainer>
@@ -134,9 +134,9 @@ export default function CostPerformancePage({ data }: Props) {
                 <XAxis dataKey="month" tick={{ fontSize: 8 }} />
                 <YAxis tick={{ fontSize: 8 }} tickFormatter={(v) => fmtCurrency(v)} />
                 <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 8 }} iconSize={6} />
-                <Line type="monotone" dataKey="current" name="Current" stroke="#1e3a5f" strokeWidth={2} dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="prior"   name="Prior"   stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 2" dot={false} />
-                <Line type="monotone" dataKey="budget"  name="Budget"  stroke="#15803d" strokeWidth={1.5} strokeDasharray="6 3" dot={false} />
+                <Line type="monotone" dataKey="current" name="Current" stroke="#1e3a5f" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
+                <Line type="monotone" dataKey="prior"   name="Prior"   stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 2" dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="budget"  name="Budget"  stroke="#15803d" strokeWidth={1.5} strokeDasharray="6 3" dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
