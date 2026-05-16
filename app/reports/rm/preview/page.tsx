@@ -7,6 +7,7 @@ import PageFrame      from '@/components/print/PageFrame';
 import CostPerformancePage from '@/components/print/CostPerformancePage';
 import HeatmapPage          from '@/components/print/HeatmapPage';
 import EfficiencyPage       from '@/components/print/EfficiencyPage';
+import TicketHeatmapPage    from '@/components/print/TicketHeatmapPage';
 import ReadyBeacon          from '../print/ReadyBeacon';
 import { buildReportPayload, type ReportPayload } from '@/lib/buildReportPayload';
 
@@ -71,7 +72,7 @@ export default async function PreviewPage({ searchParams }: Props) {
   }
 
   const period     = formatPeriod(payload.meta.period.from, payload.meta.period.to);
-  const totalPages = 4;
+  const totalPages = 5;
   const sitesCount = payload.siteHeatmap.sites.length;
   const splitAt    = Math.ceil(sitesCount / 2);
 
@@ -126,6 +127,16 @@ export default async function PreviewPage({ searchParams }: Props) {
         period={period}
       >
         <EfficiencyPage data={payload.efficiency} />
+      </PageFrame>
+
+      <PageFrame
+        pageIndex={5}
+        pageTotal={totalPages}
+        pageTitle="Tickets · Cost × Category"
+        pageMeta={`${payload.siteHeatmapTickets.sites.length} sites by ticket count · ${payload.siteHeatmapTickets.rolledUp.siteCount} more rolled up`}
+        period={period}
+      >
+        <TicketHeatmapPage data={payload.siteHeatmapTickets} />
       </PageFrame>
 
       <ReadyBeacon />

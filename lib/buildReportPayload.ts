@@ -53,6 +53,24 @@ export interface ReportPayload {
     grandTotal:   number;
     noteCoverage: number;
   };
+  siteHeatmapTickets: {
+    categories: string[];
+    sites: Array<{
+      code:   string;
+      name:   string;
+      values: Array<number | null>;
+      total:  number;
+      note:   string | null;
+    }>;
+    rolledUp: {
+      siteCount: number;
+      values:    Array<number>;
+      total:     number;
+    };
+    columnTotals: Array<number>;
+    grandTotal:   number;
+    noteCoverage: number;
+  };
   efficiency: {
     openTickets:  { total: number; urgent: number };
     mttrDays:     { value: number | null; vsLM: number | null };
@@ -116,6 +134,7 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     trend,
     topMovers,
     heatmap,
+    heatmapTickets,
     notesRows,
     kpisEff,
     aging,
@@ -126,6 +145,7 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     getJSON<any>(`/api/rm/cost-trend?${queryStr}`),
     getJSON<any>(`/api/rm/top-movers?${queryStr}`),
     getJSON<any>(`/api/rm/cost-heatmap?${queryStr}`),
+    getJSON<any>(`/api/rm/cost-heatmap?${queryStr}&dimension=tickets`),
     query<{ site_code: string; note_text: string }>(
       `SELECT DISTINCT ON (site_code) site_code, note_text
          FROM rm_site_notes
@@ -177,6 +197,39 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     return top20Sum + rolledUpValues[i];
   });
   const grandTotal = columnTotals.reduce((a, b) => a + b, 0);
+
+  // ── Ticket-dimension heatmap reshape ────────────────────────────
+  const hmT = heatmapTickets.data;
+  const allSitesT = hmT.sites as Array<{ siteCode: string; siteName: string; total: number; volume: number }>;
+  const top20T = allSitesT.slice(0, 20);
+  const restT  = allSitesT.slice(20);
+
+  const sitesShapedT = top20T.map(s => {
+    const values: Array<number | null> = categories.map(c => {
+      const cell = hmT.matrix[s.siteCode]?.[c.slug];
+      const count = cell?.ticketCount ?? 0;
+      return count > 0 ? count : null;
+    });
+    const total = values.reduce<number>((sum, v) => sum + (v ?? 0), 0);
+    return {
+      code:   s.siteCode,
+      name:   s.siteName,
+      values,
+      total,
+      note:   notesBySite[s.siteCode] || null,
+    };
+  });
+
+  const rolledUpValuesT = categories.map(c =>
+    restT.reduce((sum, s) => sum + (hmT.matrix[s.siteCode]?.[c.slug]?.ticketCount ?? 0), 0)
+  );
+  const rolledUpTotalT = rolledUpValuesT.reduce((a, b) => a + b, 0);
+
+  const columnTotalsT  = categories.map((c, i) => {
+    const top20Sum = sitesShapedT.reduce((sum, s) => sum + (s.values[i] ?? 0), 0);
+    return top20Sum + rolledUpValuesT[i];
+  });
+  const grandTotalT = columnTotalsT.reduce((a, b) => a + b, 0);
 
   // ── Efficiency callouts (3 inline queries) ───────────────────────
   // worstSla: site with the highest SLA breach count in the period.
@@ -319,6 +372,18 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
       columnTotals,
       grandTotal,
       noteCoverage: sitesShaped.filter(s => s.note).length,
+    },
+    siteHeatmapTickets: {
+      categories:   categoryNames,
+      sites:        sitesShapedT,
+      rolledUp: {
+        siteCount:  restT.length,
+        values:     rolledUpValuesT,
+        total:      rolledUpTotalT,
+      },
+      columnTotals: columnTotalsT,
+      grandTotal:   grandTotalT,
+      noteCoverage: sitesShapedT.filter(s => s.note).length,
     },
     efficiency: {
       openTickets: {

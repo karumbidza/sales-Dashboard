@@ -8,9 +8,6 @@ import CostKpiStrip from '@/components/rm/CostKpiStrip';
 import CostParetoChart from '@/components/rm/CostParetoChart';
 import CostTrendChart from '@/components/rm/CostTrendChart';
 import CostHeatmap from '@/components/rm/CostHeatmap';
-import EfficiencyKpiStrip from '@/components/rm/EfficiencyKpiStrip';
-import TicketAgingChart from '@/components/rm/TicketAgingChart';
-import RecurringIssuesPanel from '@/components/rm/RecurringIssuesPanel';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -105,7 +102,7 @@ export default function RMCommandCenterPage() {
             <ChartIcon />
             <div>
               <h1 className="text-base font-bold tracking-wide leading-tight">Redan Sales Dashboard</h1>
-              <p className="text-[11px]" style={{ color: '#93c5fd' }}>R&amp;M Command Center · cost &amp; efficiency · tracked separately</p>
+              <p className="text-[11px]" style={{ color: '#93c5fd' }}>R&amp;M Cost · spend × site × category</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -127,7 +124,8 @@ export default function RMCommandCenterPage() {
         <div className="max-w-screen-2xl mx-auto px-6 flex gap-0.5">
           <Link href="/dashboard"                     className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Sales Dashboard</Link>
           <Link href="/dashboard"                     className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Data Management</Link>
-          <span                                       className="px-4 py-2 text-xs font-medium rounded-t-md bg-[#f4f6f9] text-[#1e3a5f]">R&amp;M Command Center</span>
+          <span                                       className="px-4 py-2 text-xs font-medium rounded-t-md bg-[#f4f6f9] text-[#1e3a5f]">R&amp;M Cost</span>
+          <Link href="/dashboard/helpdesk"            className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Helpdesk</Link>
           <Link href="/dashboard/maintenance/rules"   className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Rules</Link>
           <Link href="/dashboard/cost-analysis"       className="px-4 py-2 text-xs font-medium rounded-t-md text-blue-200 hover:text-white hover:bg-white/10 transition-all">Cost Analysis</Link>
         </div>
@@ -206,15 +204,6 @@ export default function RMCommandCenterPage() {
             />
           </div>
 
-          {/* Helpdesk / efficiency. */}
-          <div>
-            <LensDivider label="EFFICIENCY LENS · OPERATIONAL · HELPDESK" accent="efficiency" />
-            <EfficiencyKpiStrip filters={filters} />
-          </div>
-          <div className="grid grid-cols-2 gap-[10px]">
-            <div><TicketAgingChart filters={filters} /></div>
-            <div><RecurringIssuesPanel filters={filters} /></div>
-          </div>
         </div>
       </main>
     </div>
