@@ -51,8 +51,8 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding-bottom: 10pt;
-  margin-bottom: 14pt;
+  padding-bottom: 13pt;
+  margin-bottom: 18pt;
   border-bottom: 1.5pt solid #1e3a5f;
 }
 .report-page-header-left  { flex: 1; }
@@ -146,13 +146,16 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   font-weight: 700;
   color: #475569;
   letter-spacing: 0.4pt;
-  padding: 5pt 3pt;
+  /* Generous header padding — gives the column titles real breathing
+     room before the first data row, and keeps the column rules visually
+     separated from the body. Bottom padding > top padding because of
+     the 0.75pt rule under the header. */
+  padding: 9pt 4pt 8pt;
   text-align: right;
-  /* Allow category headers to wrap to two lines so 'COMPRESSORS' / 'GENERATORS'
-     don't run into adjacent columns. */
   white-space: normal;
-  line-height: 1.1;
+  line-height: 1.15;
   vertical-align: bottom;
+  border-bottom: 0.75pt solid #cbd5e1;
 }
 .hm-th-site  { text-align: left; }
 .hm-th-cat   { text-align: right; }
@@ -161,7 +164,10 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
 
 .hm-td {
   font-size: 7.5pt;
-  padding: 4pt 3pt;
+  /* Doubled the vertical padding (was 4pt) — with the heatmap split
+     across two pages each shows ~10 sites, leaving plenty of room to
+     give every row real air. Horizontal padding bumped 3pt → 4pt. */
+  padding: 8pt 4pt;
   border-bottom: 0.5pt solid #f1f5f9;
   vertical-align: middle;
 }
@@ -177,13 +183,13 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #94a3b8;
   font-family: 'Inter', monospace;
   letter-spacing: 0.2pt;
-  margin-bottom: 1pt;
+  margin-bottom: 2pt;
 }
 .hm-site-name {
   display: block;
   font-weight: 600;
-  font-size: 8.5pt;
-  line-height: 1.1;
+  font-size: 9pt;
+  line-height: 1.2;
 }
 .hm-td-val {
   text-align: right;
@@ -209,6 +215,8 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #1e3a5f;
   font-weight: 700;
   background: #f8fafc;
+  padding: 10pt 4pt;
+  font-size: 8pt;
 }
 
 /* Quintile colors */
