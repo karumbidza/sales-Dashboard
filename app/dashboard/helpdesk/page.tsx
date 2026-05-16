@@ -118,6 +118,15 @@ export default function HelpdeskPage() {
         <LensDivider label="TICKETS · CATEGORY BREAKDOWN" />
         <TicketHeatmap filters={filters} />
 
+        {/* Full list — every site with tickets, no per-site notes. */}
+        <div className="mt-4">
+          <TicketHeatmap
+            filters={filters}
+            mode="plain"
+            title="All Sites · Tickets"
+          />
+        </div>
+
         {/* contentEditable placeholder for the heatmap's per-site note cells */}
         <style>{`
           .rm-note-cell:empty::before {

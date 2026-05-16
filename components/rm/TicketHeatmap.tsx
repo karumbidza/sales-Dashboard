@@ -86,9 +86,26 @@ function NoteCell({
 
 interface Props {
   filters: RMFilters;
+  /** 'commented' shows the per-site Note column and the source toggle (default).
+   *  'plain' hides notes + source toggle, shows all sites uncapped — used for
+   *  the YTD all-sites view on the helpdesk page and PDF page 6. */
+  mode?: 'commented' | 'plain';
+  /** Default row cap (commented mode only). Plain mode shows every site. */
+  rowCap?: number;
+  /** Card header title. */
+  title?: string;
 }
 
-export default function TicketHeatmap({ filters }: Props) {
+export default function TicketHeatmap({
+  filters,
+  mode = 'commented',
+  rowCap = 20,
+  title = 'Tickets · Site × Category',
+}: Props) {
+  const showNotes        = mode === 'commented';
+  const showSourceToggle = mode === 'commented';
+  const isAllSites       = mode === 'plain';
+
   const [source, setSource] = useState<Source>('tickets');
   const [metric, setMetric] = useState<Metric>('count');
   const [data, setData] = useState<HeatmapResponse | null>(null);
@@ -147,7 +164,11 @@ export default function TicketHeatmap({ filters }: Props) {
     }).catch(() => {});
   }
 
-  const visibleSites = useMemo(() => (data?.sites || []).slice(0, 20), [data]);
+  const visibleSites = useMemo(() => {
+    if (!data) return [];
+    if (isAllSites) return data.sites;        // every site with tickets
+    return data.sites.slice(0, rowCap);       // top N
+  }, [data, isAllSites, rowCap]);
   const categories   = data?.categories || [];
 
   function cellValue(cell: Cell | undefined): number | null {
@@ -195,20 +216,22 @@ export default function TicketHeatmap({ filters }: Props) {
     <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px]">
       <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
         <div className="text-[11px] font-medium text-gray-800">
-          Tickets · Site × Category
+          {title}
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
-            Sites
-            <select
-              value={source}
-              onChange={e => setSource(e.target.value as Source)}
-              className="text-[11px] border border-gray-300 rounded px-1.5 py-0.5 font-normal normal-case tracking-normal"
-            >
-              <option value="tickets">Top by tickets</option>
-              <option value="cost">Match cost sites</option>
-            </select>
-          </label>
+          {showSourceToggle && (
+            <label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+              Sites
+              <select
+                value={source}
+                onChange={e => setSource(e.target.value as Source)}
+                className="text-[11px] border border-gray-300 rounded px-1.5 py-0.5 font-normal normal-case tracking-normal"
+              >
+                <option value="tickets">Top by tickets</option>
+                <option value="cost">Match cost sites</option>
+              </select>
+            </label>
+          )}
           <div className="flex gap-0.5">
             {metricToggle('count', 'Count')}
             {metricToggle('mttr',  'MTTR')}
@@ -242,9 +265,11 @@ export default function TicketHeatmap({ filters }: Props) {
                     {shortCategory(c.name)}
                   </th>
                 ))}
-                <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold w-[220px]">
-                  Note
-                </th>
+                {showNotes && (
+                  <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold w-[220px]">
+                    Note
+                  </th>
+                )}
                 <th className="text-right px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
                   Total
                 </th>
@@ -285,14 +310,16 @@ export default function TicketHeatmap({ filters }: Props) {
                         </td>
                       );
                     })}
-                    <td className="px-1.5 py-0.5 align-top w-[220px]">
-                      <NoteCell
-                        key={`${filters.dateFrom}-${filters.dateTo}-${s.siteCode}`}
-                        initial={siteNotes[s.siteCode] || ''}
-                        onCommit={v => updateSiteNote(s.siteCode, v)}
-                        placeholder="add note…"
-                      />
-                    </td>
+                    {showNotes && (
+                      <td className="px-1.5 py-0.5 align-top w-[220px]">
+                        <NoteCell
+                          key={`${filters.dateFrom}-${filters.dateTo}-${s.siteCode}`}
+                          initial={siteNotes[s.siteCode] || ''}
+                          onCommit={v => updateSiteNote(s.siteCode, v)}
+                          placeholder="add note…"
+                        />
+                      </td>
+                    )}
                     <td className="px-2 py-1 text-right font-medium text-gray-900 whitespace-nowrap">
                       {rowTotal > 0 ? rowTotal : '—'}
                     </td>

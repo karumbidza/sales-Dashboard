@@ -2,6 +2,7 @@
 // Dev-only preview of the PDF report — same components as /print but
 // without HMAC token requirement. Use it to iterate on layout in the
 // browser before deploying. Returns 404 in production deployments.
+// Renders 6 pages (1–6); page 6 = Tickets · All Sites (no notes).
 import { notFound } from 'next/navigation';
 import PageFrame      from '@/components/print/PageFrame';
 import CostPerformancePage from '@/components/print/CostPerformancePage';
@@ -72,7 +73,7 @@ export default async function PreviewPage({ searchParams }: Props) {
   }
 
   const period     = formatPeriod(payload.meta.period.from, payload.meta.period.to);
-  const totalPages = 5;
+  const totalPages = 6;
   const sitesCount = payload.siteHeatmap.sites.length;
   const splitAt    = Math.ceil(sitesCount / 2);
 
@@ -137,6 +138,16 @@ export default async function PreviewPage({ searchParams }: Props) {
         period={period}
       >
         <TicketHeatmapPage data={payload.siteHeatmapTickets} />
+      </PageFrame>
+
+      <PageFrame
+        pageIndex={6}
+        pageTotal={totalPages}
+        pageTitle="Tickets · All Sites"
+        pageMeta={`${payload.siteHeatmapTicketsAll.sites.length} sites with tickets in window`}
+        period={period}
+      >
+        <TicketHeatmapPage data={payload.siteHeatmapTicketsAll} hideNotes={true} />
       </PageFrame>
 
       <ReadyBeacon />

@@ -1,9 +1,9 @@
 // components/print/TicketHeatmapPage.tsx
-// PDF page 5 — Tickets · Cost × Category. Same skeleton + same .hm-*
-// CSS as the cost-side heatmap; cell value is ticket count (small
-// integer, fits in narrow columns). Single page — no split needed.
+// PDF pages 5 & 6 — Tickets · Cost × Category. Same skeleton + same
+// .hm-* CSS as the cost-side heatmap; cell value is ticket count
+// (small integer, fits in narrow columns). Single page — no split
+// needed. Pass hideNotes={true} for the all-sites variant (page 6).
 import React from 'react';
-import type { ReportPayload } from '@/lib/buildReportPayload';
 import { shortCategory } from '@/lib/categoryAbbrev';
 
 type ColorClass = 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | null;
@@ -22,10 +22,28 @@ function cellColor(value: number | null, columnValues: Array<number | null>): Co
 }
 
 interface Props {
-  data: ReportPayload['siteHeatmapTickets'];
+  data: {
+    categories: string[];
+    sites: Array<{
+      code:   string;
+      name:   string;
+      values: Array<number | null>;
+      total:  number;
+      note:   string | null;
+    }>;
+    columnTotals: Array<number>;
+    grandTotal:   number;
+    rolledUp?: {
+      siteCount: number;
+      values:    Array<number>;
+      total:     number;
+    };
+    noteCoverage?: number;
+  };
+  hideNotes?: boolean;
 }
 
-export default function TicketHeatmapPage({ data }: Props) {
+export default function TicketHeatmapPage({ data, hideNotes = false }: Props) {
   const columnValueArrays = data.categories.map((_, i) =>
     data.sites.map(s => s.values[i])
   );
@@ -38,7 +56,7 @@ export default function TicketHeatmapPage({ data }: Props) {
           {data.categories.map((_, i) => (
             <col key={i} />
           ))}
-          <col className="hm-col-note" />
+          {!hideNotes && <col className="hm-col-note" />}
           <col className="hm-col-total" />
         </colgroup>
 
@@ -50,7 +68,7 @@ export default function TicketHeatmapPage({ data }: Props) {
                 {shortCategory(c)}
               </th>
             ))}
-            <th className="hm-th hm-th-note">NOTES</th>
+            {!hideNotes && <th className="hm-th hm-th-note">NOTES</th>}
             <th className="hm-th hm-th-total">TICKETS</th>
           </tr>
         </thead>
@@ -70,7 +88,7 @@ export default function TicketHeatmapPage({ data }: Props) {
                   </td>
                 );
               })}
-              <td className="hm-td hm-td-note">{s.note || ''}</td>
+              {!hideNotes && <td className="hm-td hm-td-note">{s.note || ''}</td>}
               <td className="hm-td hm-td-total">{s.total}</td>
             </tr>
           ))}
@@ -78,11 +96,11 @@ export default function TicketHeatmapPage({ data }: Props) {
 
         <tfoot>
           <tr className="hm-tfoot-row">
-            <td className="hm-td hm-td-site">TOP {data.sites.length} TOTAL</td>
+            <td className="hm-td hm-td-site">{data.sites.length} SITES TOTAL</td>
             {data.columnTotals.map((t, i) => (
               <td key={i} className="hm-td hm-td-val">{t > 0 ? t : '—'}</td>
             ))}
-            <td className="hm-td hm-td-note" />
+            {!hideNotes && <td className="hm-td hm-td-note" />}
             <td className="hm-td hm-td-total">{data.grandTotal}</td>
           </tr>
         </tfoot>
@@ -100,7 +118,7 @@ export default function TicketHeatmapPage({ data }: Props) {
           <span className="hm-legend-end">high</span>
           <span className="hm-legend-note">· ticket count per cell, colored against its category column</span>
         </div>
-        {data.rolledUp.siteCount > 0 && (
+        {data.rolledUp && data.rolledUp.siteCount > 0 && (
           <div className="hm-legend-right">
             Remaining {data.rolledUp.siteCount} sites: {data.rolledUp.total} tickets
           </div>
