@@ -6,7 +6,8 @@
     "app/api/maintenance/categorize-batch/route.ts":          { "maxDuration": 60 },
     "app/api/maintenance/anomalies/route.ts":                 { "maxDuration": 30 },
     "app/api/maintenance/invoices/route.ts":                  { "maxDuration": 30 },
-    "app/api/maintenance/sites/route.ts":                     { "maxDuration": 30 }
+    "app/api/maintenance/sites/route.ts":                     { "maxDuration": 30 },
+    "app/api/reports/rm/generate/route.ts":                   { "memory": 1024, "maxDuration": 60 }
   },
   "crons": [
     { "path": "/api/maintenance/categorize-batch", "schedule": "*/5 * * * *" }

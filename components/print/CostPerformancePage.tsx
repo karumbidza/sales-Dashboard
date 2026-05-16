@@ -1,3 +1,4 @@
+'use client';
 // components/print/CostPerformancePage.tsx
 // Page 1 — Cost Performance.
 //   KPI strip (4 cards) + Pareto + Trend (with budget) + Top Movers callout.
