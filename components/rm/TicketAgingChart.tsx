@@ -22,14 +22,12 @@ interface AgingResponse {
   total:      number;
 }
 
-// Status color palette — red for blocked-by-others, amber for in-progress,
-// blue for fresh.
 const STATUS_COLORS: Record<string, string> = {
-  'Waiting on Third Party': '#ef4444',  // red — blocked, needs follow-up
+  'Open':                   '#ef4444',  // red — needs action
+  'Waiting on Third Party': '#fde68a',  // light yellow — blocked externally
   'Waiting on Customer':    '#f97316',  // orange — blocked
   'Pending':                '#eab308',  // yellow
   'In Progress':            '#3b82f6',  // blue — actively worked
-  'Open':                   '#06b6d4',  // cyan — fresh
   'Unspecified':            '#94a3b8',  // gray
 };
 
@@ -46,6 +44,12 @@ const STATUS_ORDER = [
 
 function statusColor(status: string): string {
   return STATUS_COLORS[status] || FALLBACK_COLOR;
+}
+
+// Light backgrounds (yellow/pending) need dark text for readability.
+const DARK_TEXT_STATUSES = new Set(['Waiting on Third Party', 'Pending']);
+function statusTextColor(status: string): string {
+  return DARK_TEXT_STATUSES.has(status) ? '#1f2937' : '#ffffff';
 }
 
 function sortedStatusEntries(byStatus: Record<string, number>): Array<[string, number]> {
@@ -170,8 +174,8 @@ export default function TicketAgingChart({ filters }: Props) {
                       return (
                         <div
                           key={status}
-                          className="h-full flex items-center justify-center text-[9px] font-medium text-white"
-                          style={{ width: `${segWidth}%`, background: statusColor(status) }}
+                          className="h-full flex items-center justify-center text-[9px] font-medium"
+                          style={{ width: `${segWidth}%`, background: statusColor(status), color: statusTextColor(status) }}
                           title={`${status}: ${n}`}>
                           {segWidth > 10 ? n : ''}
                         </div>
