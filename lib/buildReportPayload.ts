@@ -71,6 +71,18 @@ export interface ReportPayload {
     grandTotal:   number;
     noteCoverage: number;
   };
+  siteHeatmapTicketsAll: {
+    categories: string[];
+    sites: Array<{
+      code:   string;
+      name:   string;
+      values: Array<number | null>;
+      total:  number;
+      note:   string | null;       // always null in plain mode but kept for type alignment
+    }>;
+    columnTotals: Array<number>;
+    grandTotal:   number;
+  };
   efficiency: {
     openTickets:  { total: number; urgent: number };
     mttrDays:     { value: number | null; vsLM: number | null };
@@ -231,6 +243,27 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
   });
   const grandTotalT = columnTotalsT.reduce((a, b) => a + b, 0);
 
+  // ── Ticket-dimension full list (no notes, no top-20 cap) ────────
+  const sitesShapedTAll = allSitesT.map(s => {
+    const values: Array<number | null> = categories.map(c => {
+      const cell = hmT.matrix[s.siteCode]?.[c.slug];
+      const count = cell?.ticketCount ?? 0;
+      return count > 0 ? count : null;
+    });
+    const total = values.reduce<number>((sum, v) => sum + (v ?? 0), 0);
+    return {
+      code:   s.siteCode,
+      name:   s.siteName,
+      values,
+      total,
+      note:   null,                              // plain mode — notes hidden
+    };
+  });
+  const columnTotalsTAll = categories.map((c, i) =>
+    sitesShapedTAll.reduce((sum, s) => sum + (s.values[i] ?? 0), 0)
+  );
+  const grandTotalTAll = columnTotalsTAll.reduce((a, b) => a + b, 0);
+
   // ── Efficiency callouts (3 inline queries) ───────────────────────
   // worstSla: site with the highest SLA breach count in the period.
   const worstSlaRow = await query<{ site_code: string; site_name: string; breaches: number; total: number }>(
@@ -384,6 +417,12 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
       columnTotals: columnTotalsT,
       grandTotal:   grandTotalT,
       noteCoverage: sitesShapedT.filter(s => s.note).length,
+    },
+    siteHeatmapTicketsAll: {
+      categories:   categoryNames,
+      sites:        sitesShapedTAll,
+      columnTotals: columnTotalsTAll,
+      grandTotal:   grandTotalTAll,
     },
     efficiency: {
       openTickets: {
