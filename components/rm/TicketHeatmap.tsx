@@ -24,13 +24,34 @@ interface Cell {
 }
 
 interface HeatmapResponse {
-  sites:      { siteCode: string; siteName: string; total: number; volume: number }[];
-  categories: { slug: string; name: string; total: number }[];
-  matrix:     Record<string, Record<string, Cell>>;
+  sites:             { siteCode: string; siteName: string; total: number; volume: number }[];
+  categories:        { slug: string; name: string; total: number }[];
+  matrix:            Record<string, Record<string, Cell>>;
+  statuses?:         string[];
+  byStatus?:         Record<string, Record<string, number>>;
+  ticketCategories?: { slug: string; name: string; total: number }[];
+  ticketMatrix?:     Record<string, Record<string, number>>;
+  ticketSites?:      { siteCode: string; siteName: string; total: number }[];
 }
 
 type Metric = 'count' | 'mttr' | 'sla';
 type Source = 'tickets' | 'cost';
+type View   = 'category' | 'status';
+
+// 4–5 char abbreviations for status column headers to keep the table narrow.
+const STATUS_ABBREV: Record<string, string> = {
+  'Open':                   'OPEN',
+  'Pending':                'PEND',
+  'Waiting on Customer':    'W-CST',
+  'Waiting on Third Party': 'W-3P',
+  'In Progress':            'INPRG',
+  'Resolved':               'RESV',
+  'Closed':                 'CLSD',
+  'Unspecified':            '—',
+};
+function shortStatus(s: string): string {
+  return STATUS_ABBREV[s] || s.slice(0, 5).toUpperCase();
+}
 
 type ColorClass = 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | null;
 
@@ -108,6 +129,7 @@ export default function TicketHeatmap({
 
   const [source, setSource] = useState<Source>('tickets');
   const [metric, setMetric] = useState<Metric>('count');
+  const [view,   setView]   = useState<View>('category');
   const [data, setData] = useState<HeatmapResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [drawerFilters, setDrawerFilters] = useState<TicketFilters | null>(null);
@@ -164,18 +186,25 @@ export default function TicketHeatmap({
     }).catch(() => {});
   }
 
+  // Ticket-heatmap is fully ticket-driven: site list, category list, and
+  // per-cell counts all come from the helpdesk system, independent of
+  // invoices. Falls back to the invoice-driven sites/categories when the
+  // API hasn't been redeployed with the ticket-* fields.
+  const ticketSites      = data?.ticketSites      || data?.sites      || [];
+  const ticketCategories = data?.ticketCategories || data?.categories?.map(c => ({ slug: c.slug, name: c.name, total: 0 })) || [];
+  const ticketMatrix     = data?.ticketMatrix     || {};
+
   const visibleSites = useMemo(() => {
     if (!data) return [];
-    if (isAllSites) return data.sites;        // every site with tickets
-    return data.sites.slice(0, rowCap);       // top N
-  }, [data, isAllSites, rowCap]);
-  const categories   = data?.categories || [];
+    if (isAllSites) return ticketSites;        // every site with tickets
+    return ticketSites.slice(0, rowCap);       // top N
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, isAllSites, rowCap, ticketSites]);
+  const categories = ticketCategories;
 
-  function cellValue(cell: Cell | undefined): number | null {
-    if (!cell || cell.ticketCount === 0) return null;
-    // v1 limitation: MTTR and SLA are not yet exposed per-cell by the
-    // backend. Both modes fall back to ticket count until that lands.
-    return cell.ticketCount;
+  function ticketCellValue(siteCode: string, slug: string): number | null {
+    const v = ticketMatrix[siteCode]?.[slug];
+    return v && v > 0 ? v : null;
   }
 
   function fmtCell(v: number | null): string {
@@ -185,8 +214,8 @@ export default function TicketHeatmap({
     return `${v.toFixed(0)}%`;
   }
 
-  const columnValueArrays = categories.map((_, i) =>
-    visibleSites.map(s => cellValue(data?.matrix[s.siteCode]?.[categories[i].slug])),
+  const columnValueArrays = categories.map(c =>
+    visibleSites.map(s => ticketCellValue(s.siteCode, c.slug)),
   );
 
   function onCellClick(siteCode: string, categorySlug: string) {
@@ -212,6 +241,40 @@ export default function TicketHeatmap({
     </button>
   );
 
+  const viewToggle = (v: View, label: string) => (
+    <button
+      key={v}
+      onClick={() => setView(v)}
+      className={`text-[10px] px-2 py-0.5 rounded ${
+        view === v
+          ? 'bg-[#1e3a5f] text-white'
+          : 'border border-gray-300 text-gray-600'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  const statuses = data?.statuses || [];
+  const byStatus = data?.byStatus || {};
+
+  // Per-status column values across visible sites, used for quintile coloring.
+  const statusColumnValueArrays = statuses.map(st =>
+    visibleSites.map(s => {
+      const v = byStatus[s.siteCode]?.[st];
+      return v && v > 0 ? v : null;
+    }),
+  );
+
+  function onStatusCellClick(siteCode: string, status: string) {
+    setDrawerFilters({
+      dateFrom: filters.dateFrom,
+      dateTo:   filters.dateTo,
+      siteCode,
+      status,
+    });
+  }
+
   return (
     <div className="bg-white border border-gray-200 rounded-md p-3 mb-[10px]">
       <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
@@ -233,10 +296,16 @@ export default function TicketHeatmap({
             </label>
           )}
           <div className="flex gap-0.5">
-            {metricToggle('count', 'Count')}
-            {metricToggle('mttr',  'MTTR')}
-            {metricToggle('sla',   'SLA %')}
+            {viewToggle('category', 'Category')}
+            {viewToggle('status',   'Status')}
           </div>
+          {view === 'category' && (
+            <div className="flex gap-0.5">
+              {metricToggle('count', 'Count')}
+              {metricToggle('mttr',  'MTTR')}
+              {metricToggle('sla',   'SLA %')}
+            </div>
+          )}
         </div>
       </div>
 
@@ -256,15 +325,25 @@ export default function TicketHeatmap({
                 <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
                   Site
                 </th>
-                {categories.map(c => (
-                  <th
-                    key={c.slug}
-                    className="text-right px-1.5 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold whitespace-nowrap"
-                    title={c.name}
-                  >
-                    {shortCategory(c.name)}
-                  </th>
-                ))}
+                {view === 'category'
+                  ? categories.map(c => (
+                      <th
+                        key={c.slug}
+                        className="text-right px-1.5 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold whitespace-nowrap"
+                        title={c.name}
+                      >
+                        {shortCategory(c.name)}
+                      </th>
+                    ))
+                  : statuses.map(st => (
+                      <th
+                        key={st}
+                        className="text-right px-1.5 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold whitespace-nowrap"
+                        title={st}
+                      >
+                        {shortStatus(st)}
+                      </th>
+                    ))}
                 {showNotes && (
                   <th className="text-left px-2 py-1.5 text-[10px] uppercase tracking-wide text-gray-500 font-semibold w-[220px]">
                     Note
@@ -277,10 +356,15 @@ export default function TicketHeatmap({
             </thead>
             <tbody>
               {visibleSites.map(s => {
-                const rowTotal = categories.reduce((sum, c) => {
-                  const v = cellValue(data.matrix[s.siteCode]?.[c.slug]);
+                const categoryRowTotal = categories.reduce((sum, c) => {
+                  const v = ticketCellValue(s.siteCode, c.slug);
                   return sum + (v ?? 0);
                 }, 0);
+                const statusRowTotal = statuses.reduce((sum, st) => {
+                  const v = byStatus[s.siteCode]?.[st] || 0;
+                  return sum + v;
+                }, 0);
+                const rowTotal = view === 'category' ? categoryRowTotal : statusRowTotal;
                 return (
                   <tr key={s.siteCode}>
                     <td className="px-2 py-1 text-gray-900 whitespace-nowrap">
@@ -289,27 +373,50 @@ export default function TicketHeatmap({
                       </span>
                       {s.siteName}
                     </td>
-                    {categories.map((c, i) => {
-                      const v   = cellValue(data.matrix[s.siteCode]?.[c.slug]);
-                      const cls = cellColor(v, columnValueArrays[i]);
-                      return (
-                        <td key={c.slug} className="px-0.5 py-0.5">
-                          {v !== null ? (
-                            <button
-                              onClick={() => onCellClick(s.siteCode, c.slug)}
-                              className={`w-full px-1.5 py-1 text-right text-[11px] rounded hover:opacity-80 transition-opacity ${cls ? TIER_BG[cls] : ''}`}
-                              title={`${s.siteName} · ${c.name}: ${fmtCell(v)}`}
-                            >
-                              {fmtCell(v)}
-                            </button>
-                          ) : (
-                            <div className="w-full px-1.5 py-1 text-right text-[11px] text-gray-300">
-                              —
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
+                    {view === 'category'
+                      ? categories.map((c, i) => {
+                          const v   = ticketCellValue(s.siteCode, c.slug);
+                          const cls = cellColor(v, columnValueArrays[i]);
+                          return (
+                            <td key={c.slug} className="px-0.5 py-0.5">
+                              {v !== null ? (
+                                <button
+                                  onClick={() => onCellClick(s.siteCode, c.slug)}
+                                  className={`w-full px-1.5 py-1 text-right text-[11px] rounded hover:opacity-80 transition-opacity ${cls ? TIER_BG[cls] : ''}`}
+                                  title={`${s.siteName} · ${c.name}: ${fmtCell(v)}`}
+                                >
+                                  {fmtCell(v)}
+                                </button>
+                              ) : (
+                                <div className="w-full px-1.5 py-1 text-right text-[11px] text-gray-300">
+                                  —
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })
+                      : statuses.map((st, i) => {
+                          const raw = byStatus[s.siteCode]?.[st];
+                          const v   = raw && raw > 0 ? raw : null;
+                          const cls = cellColor(v, statusColumnValueArrays[i]);
+                          return (
+                            <td key={st} className="px-0.5 py-0.5">
+                              {v !== null ? (
+                                <button
+                                  onClick={() => onStatusCellClick(s.siteCode, st)}
+                                  className={`w-full px-1.5 py-1 text-right text-[11px] rounded hover:opacity-80 transition-opacity ${cls ? TIER_BG[cls] : ''}`}
+                                  title={`${s.siteName} · ${st}: ${v}`}
+                                >
+                                  {v}
+                                </button>
+                              ) : (
+                                <div className="w-full px-1.5 py-1 text-right text-[11px] text-gray-300">
+                                  —
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
                     {showNotes && (
                       <td className="px-1.5 py-0.5 align-top w-[220px]">
                         <NoteCell
