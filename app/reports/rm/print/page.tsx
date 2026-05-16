@@ -33,11 +33,18 @@ export default async function PrintPage({ searchParams }: Props) {
     const filters = verifyPrintToken(searchParams.t || null);
     payload = await buildReportPayload(filters);
   } catch (err: any) {
+    // Render an error page that still mounts ReadyBeacon so Puppeteer
+    // gets the "ready" signal instead of hanging on waitForSelector for
+    // 30s. The resulting PDF will show the error text — diagnostic, not
+    // ideal, but better than a silent timeout.
     return (
-      <div style={{ padding: 40, fontFamily: 'system-ui' }}>
-        <h1>Unable to render report</h1>
-        <p>{err.message || 'Authentication failed'}</p>
-      </div>
+      <>
+        <div style={{ padding: 40, fontFamily: 'system-ui' }}>
+          <h1>Unable to render report</h1>
+          <p style={{ color: '#475569', whiteSpace: 'pre-wrap' }}>{err?.message || 'Authentication failed'}</p>
+        </div>
+        <ReadyBeacon />
+      </>
     );
   }
 

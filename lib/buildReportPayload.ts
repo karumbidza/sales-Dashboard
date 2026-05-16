@@ -69,7 +69,13 @@ export interface ReportPayload {
 }
 
 function baseUrl(): string {
-  // Vercel deployments set VERCEL_URL without protocol.
+  // VERCEL_PROJECT_PRODUCTION_URL is the public production alias
+  // (e.g. sales-dashboard-zeta-amber.vercel.app). VERCEL_URL is the
+  // deployment-specific URL which on Pro plans inherits preview
+  // protection — internal fetches to it return 401. Prefer the alias.
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 }
