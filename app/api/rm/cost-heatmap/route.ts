@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
     const territory = sp.get('territory') || '';
     const siteCode  = sp.get('siteCode')  || '';
     const category  = sp.get('category')  || '';
+    const dimension = (sp.get('dimension') || 'cost') === 'tickets' ? 'tickets' : 'cost';
 
     const rows = await query<CellRaw>(
       `WITH inv AS (
@@ -88,22 +89,31 @@ export async function GET(req: NextRequest) {
     );
 
     // Build site totals and category totals for ordering
-    const siteTotals = new Map<string, { siteCode: string; siteName: string; volume: number; total: number }>();
+    const siteTotals = new Map<string, { siteCode: string; siteName: string; volume: number; total: number; tickets: number }>();
     const catTotals  = new Map<string, { slug: string; name: string; total: number }>();
     for (const r of rows) {
       const cost = parseFloat(r.cost);
       const vol  = r.volume ? parseFloat(r.volume) : 0;
-      const sEntry = siteTotals.get(r.site_code) || { siteCode: r.site_code, siteName: r.site_name, volume: vol, total: 0 };
-      sEntry.total += cost;
-      sEntry.volume = vol;
+      const tcnt = r.ticket_count || 0;
+      const sEntry = siteTotals.get(r.site_code) || {
+        siteCode: r.site_code, siteName: r.site_name, volume: vol, total: 0, tickets: 0,
+      };
+      sEntry.total   += cost;
+      sEntry.tickets += tcnt;
+      sEntry.volume   = vol;
       siteTotals.set(r.site_code, sEntry);
+
       const catKey = r.category_slug || 'uncategorized';
       const cEntry = catTotals.get(catKey) || { slug: catKey, name: r.category_name || 'Uncategorized', total: 0 };
       cEntry.total += cost;
       catTotals.set(catKey, cEntry);
     }
 
-    const sites = Array.from(siteTotals.values()).sort((a, b) => b.total - a.total);
+    const sites = Array.from(siteTotals.values()).sort((a, b) =>
+      dimension === 'tickets'
+        ? b.tickets - a.tickets
+        : b.total - a.total
+    );
     const categories = Array.from(catTotals.values()).sort((a, b) => b.total - a.total);
 
     // Compute per-category mean and stddev for z-score
