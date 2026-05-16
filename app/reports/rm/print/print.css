@@ -261,6 +261,16 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #94a3b8;
 }
 
+/* Page-2 (first heatmap slice) continued-marker */
+.hm-continued {
+  text-align: right;
+  font-size: 7pt;
+  font-style: italic;
+  color: #94a3b8;
+  letter-spacing: 0.3pt;
+  padding-right: 4pt;
+}
+
 /* ── Page 1 cost performance ──────────────────────────────────────── */
 .cp-wrap {
   display: flex;

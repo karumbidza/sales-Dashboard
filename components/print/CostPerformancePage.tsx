@@ -8,6 +8,7 @@ import {
   LineChart, Legend, CartesianGrid,
 } from 'recharts';
 import type { ReportPayload } from '@/lib/buildReportPayload';
+import { shortCategory } from '@/lib/categoryAbbrev';
 
 interface Props {
   data: ReportPayload['cost'];
@@ -111,7 +112,7 @@ export default function CostPerformancePage({ data }: Props) {
                   angle={-25}
                   textAnchor="end"
                   height={50}
-                  tickFormatter={(v: string) => v.split(/\s+/)[0]}
+                  tickFormatter={(v: string) => shortCategory(v)}
                 />
                 <YAxis yAxisId="left"  tick={{ fontSize: 8 }} tickFormatter={(v) => fmtCurrency(v)} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 8 }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />

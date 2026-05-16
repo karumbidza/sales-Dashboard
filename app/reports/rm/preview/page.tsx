@@ -71,7 +71,9 @@ export default async function PreviewPage({ searchParams }: Props) {
   }
 
   const period     = formatPeriod(payload.meta.period.from, payload.meta.period.to);
-  const totalPages = 3;
+  const totalPages = 4;
+  const sitesCount = payload.siteHeatmap.sites.length;
+  const splitAt    = Math.ceil(sitesCount / 2);
 
   return (
     <>
@@ -88,17 +90,38 @@ export default async function PreviewPage({ searchParams }: Props) {
       <PageFrame
         pageIndex={2}
         pageTotal={totalPages}
-        pageTitle="Top 20 Sites · Cost × Category"
-        pageMeta={`${payload.siteHeatmap.sites.length} sites shown · ${payload.siteHeatmap.rolledUp.siteCount} more rolled up`}
+        pageTitle="Top Sites · Cost × Category (1)"
+        pageMeta={`Sites 1–${splitAt} of ${sitesCount}`}
         period={period}
       >
-        <HeatmapPage data={payload.siteHeatmap} />
+        <HeatmapPage
+          data={payload.siteHeatmap}
+          sliceFrom={0}
+          sliceTo={splitAt}
+          showFooter={false}
+        />
       </PageFrame>
 
       <PageFrame
         pageIndex={3}
         pageTotal={totalPages}
-        pageTitle="Operational Efficiency"
+        pageTitle="Top Sites · Cost × Category (2)"
+        pageMeta={`Sites ${splitAt + 1}–${sitesCount} · totals across all ${sitesCount}`}
+        period={period}
+      >
+        <HeatmapPage
+          data={payload.siteHeatmap}
+          sliceFrom={splitAt}
+          sliceTo={sitesCount}
+          showFooter={true}
+          totalsLabel={`TOP ${sitesCount} TOTAL`}
+        />
+      </PageFrame>
+
+      <PageFrame
+        pageIndex={4}
+        pageTotal={totalPages}
+        pageTitle="Operational Efficiency · Helpdesk"
         pageMeta={`${payload.efficiency.openTickets.total} open · ${payload.efficiency.slaHitRate.breaches} SLA breaches`}
         period={period}
       >

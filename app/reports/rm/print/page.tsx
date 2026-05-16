@@ -1,6 +1,10 @@
 // app/reports/rm/print/page.tsx
 // Server component the Puppeteer renderer navigates to.
-// Validates the HMAC token, calls buildReportPayload, renders 3 pages.
+// Validates the HMAC token, calls buildReportPayload, renders 4 pages:
+//   1. Cost Performance
+//   2. Heatmap (sites 1–10)
+//   3. Heatmap (sites 11–20)  ← totals + legend live here
+//   4. Operational Efficiency (Helpdesk)
 import PageFrame from '@/components/print/PageFrame';
 import HeatmapPage from '@/components/print/HeatmapPage';
 import CostPerformancePage from '@/components/print/CostPerformancePage';
@@ -33,10 +37,6 @@ export default async function PrintPage({ searchParams }: Props) {
     const filters = verifyPrintToken(searchParams.t || null);
     payload = await buildReportPayload(filters);
   } catch (err: any) {
-    // Render an error page that still mounts ReadyBeacon so Puppeteer
-    // gets the "ready" signal instead of hanging on waitForSelector for
-    // 30s. The resulting PDF will show the error text — diagnostic, not
-    // ideal, but better than a silent timeout.
     return (
       <>
         <div style={{ padding: 40, fontFamily: 'system-ui' }}>
@@ -49,7 +49,9 @@ export default async function PrintPage({ searchParams }: Props) {
   }
 
   const period = formatPeriod(payload.meta.period.from, payload.meta.period.to);
-  const totalPages = 3;
+  const totalPages = 4;
+  const sitesCount = payload.siteHeatmap.sites.length;
+  const splitAt    = Math.ceil(sitesCount / 2);     // up to 10 when sitesCount=20
 
   return (
     <>
@@ -66,17 +68,38 @@ export default async function PrintPage({ searchParams }: Props) {
       <PageFrame
         pageIndex={2}
         pageTotal={totalPages}
-        pageTitle="Top 20 Sites · Cost × Category"
-        pageMeta={`${payload.siteHeatmap.sites.length} sites shown · ${payload.siteHeatmap.rolledUp.siteCount} more rolled up`}
+        pageTitle="Top Sites · Cost × Category (1)"
+        pageMeta={`Sites 1–${splitAt} of ${sitesCount}`}
         period={period}
       >
-        <HeatmapPage data={payload.siteHeatmap} />
+        <HeatmapPage
+          data={payload.siteHeatmap}
+          sliceFrom={0}
+          sliceTo={splitAt}
+          showFooter={false}
+        />
       </PageFrame>
 
       <PageFrame
         pageIndex={3}
         pageTotal={totalPages}
-        pageTitle="Operational Efficiency"
+        pageTitle="Top Sites · Cost × Category (2)"
+        pageMeta={`Sites ${splitAt + 1}–${sitesCount} · totals across all ${sitesCount}`}
+        period={period}
+      >
+        <HeatmapPage
+          data={payload.siteHeatmap}
+          sliceFrom={splitAt}
+          sliceTo={sitesCount}
+          showFooter={true}
+          totalsLabel={`TOP ${sitesCount} TOTAL`}
+        />
+      </PageFrame>
+
+      <PageFrame
+        pageIndex={4}
+        pageTotal={totalPages}
+        pageTitle="Operational Efficiency · Helpdesk"
         pageMeta={`${payload.efficiency.openTickets.total} open · ${payload.efficiency.slaHitRate.breaches} SLA breaches`}
         period={period}
       >
