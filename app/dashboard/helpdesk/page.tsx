@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import RMFilterBar, { defaultRMFilters, RMFilters } from '@/components/rm/RMFilterBar';
 import EfficiencyKpiStrip from '@/components/rm/EfficiencyKpiStrip';
 import TicketAgingChart from '@/components/rm/TicketAgingChart';
-import RecurringIssuesPanel from '@/components/rm/RecurringIssuesPanel';
+import TicketsParetoChart from '@/components/rm/TicketsParetoChart';
 import TicketHeatmap from '@/components/rm/TicketHeatmap';
 
 const ChartIcon = () => (
@@ -112,7 +112,7 @@ export default function HelpdeskPage() {
         <EfficiencyKpiStrip filters={filters} />
         <div className="grid grid-cols-2 gap-[10px] mb-[10px]">
           <TicketAgingChart filters={filters} />
-          <RecurringIssuesPanel filters={filters} />
+          <TicketsParetoChart filters={filters} />
         </div>
 
         <LensDivider label="TICKETS · CATEGORY BREAKDOWN" />

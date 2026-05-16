@@ -33,6 +33,7 @@ export default function RMCommandCenterPage() {
   const router = useRouter();
   const [filters, setFilters] = useState<RMFilters>(defaultRMFilters());
   const [generating, setGenerating] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   // The All-Sites heatmap is always YTD regardless of the user's selected window.
   const ytdFilters = (() => {
@@ -109,6 +110,14 @@ export default function RMCommandCenterPage() {
             <span className="text-[11px]" style={{ color: '#93c5fd' }}>
               {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
+            <button onClick={() => setNotesOpen(true)}
+                    className="relative flex items-center gap-1.5 text-xs font-medium text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-md transition"
+                    title="Edit report notes">
+              Notes
+              {notes.trim() && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" aria-label="notes present" />
+              )}
+            </button>
             <button onClick={handleGeneratePDF}
                     disabled={generating}
                     className="flex items-center gap-1.5 text-xs font-medium text-white bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-md transition">
@@ -142,22 +151,6 @@ export default function RMCommandCenterPage() {
         `}</style>
 
         <RMFilterBar value={filters} onChange={setFilters} />
-
-        {/* Notes editor — visible only in the app, not captured in the PDF.
-            Sits ABOVE the report for easy access while writing; the formatted
-            mirror inside the report appears BELOW the charts to fill page 1. */}
-        <div className="card mb-4">
-          <label className="block text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1">
-            Report Notes — short overview of the charts above
-            <span className="ml-2 font-normal normal-case tracking-normal text-gray-400">(saved locally per date window · shows below Pareto + Trend in the PDF)</span>
-          </label>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="Short overview of the two charts: e.g. 'Spend tracking 4.3% above LY, mainly Capex on canopy replacements at GRE-023. 8 categories drive 80% of YTD; Pumps + Other lead at $81K and $69K. Feb was the YTD peak at $141K, well above the Feb-2025 baseline of $53K.'"
-            className="w-full text-sm border border-gray-200 rounded p-2 min-h-[72px] resize-y focus:outline-none focus:border-[#1e3a5f]"
-          />
-        </div>
 
         <div>
           <div className="bg-white border border-gray-200 rounded-md px-3 py-2 mb-[10px] text-[10px] text-gray-600">
@@ -206,6 +199,55 @@ export default function RMCommandCenterPage() {
 
         </div>
       </main>
+
+      {notesOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Report notes editor"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setNotesOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-2xl w-full max-w-2xl mx-4 flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Report Notes</div>
+                <div className="text-[11px] text-gray-500">
+                  saved locally per date window · shows below Pareto + Trend in the PDF
+                </div>
+              </div>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="text-gray-400 hover:text-gray-700 text-xl leading-none px-2"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                autoFocus
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Short overview of the two charts: e.g. 'Spend tracking 4.3% above LY, mainly Capex on canopy replacements at GRE-023. 8 categories drive 80% of YTD; Pumps + Other lead at $81K and $69K. Feb was the YTD peak at $141K, well above the Feb-2025 baseline of $53K.'"
+                className="w-full text-sm border border-gray-200 rounded p-2 min-h-[200px] resize-y focus:outline-none focus:border-[#1e3a5f]"
+              />
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-200 text-[11px] text-gray-500">
+              <span>Window: {filters.dateFrom} → {filters.dateTo}</span>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="text-xs font-medium px-3 py-1.5 rounded-md bg-[#1e3a5f] text-white hover:bg-[#16304f] transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
