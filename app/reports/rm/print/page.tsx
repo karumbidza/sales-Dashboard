@@ -1,11 +1,12 @@
 // app/reports/rm/print/page.tsx
 // Server component the Puppeteer renderer navigates to.
-// Validates the HMAC token, calls buildReportPayload, renders 5 pages:
+// Validates the HMAC token, calls buildReportPayload, renders 6 pages:
 //   1. Cost Performance
 //   2. Heatmap (sites 1–10)
 //   3. Heatmap (sites 11–20)  ← totals + legend live here
 //   4. Operational Efficiency (Helpdesk)
-//   5. Tickets · Cost × Category
+//   5. Tickets · Cost × Category (top 20 with notes)
+//   6. Tickets · All Sites (no notes)
 import PageFrame from '@/components/print/PageFrame';
 import HeatmapPage from '@/components/print/HeatmapPage';
 import CostPerformancePage from '@/components/print/CostPerformancePage';
@@ -51,7 +52,7 @@ export default async function PrintPage({ searchParams }: Props) {
   }
 
   const period = formatPeriod(payload.meta.period.from, payload.meta.period.to);
-  const totalPages = 5;
+  const totalPages = 6;
   const sitesCount = payload.siteHeatmap.sites.length;
   const splitAt    = Math.ceil(sitesCount / 2);     // up to 10 when sitesCount=20
 
@@ -116,6 +117,16 @@ export default async function PrintPage({ searchParams }: Props) {
         period={period}
       >
         <TicketHeatmapPage data={payload.siteHeatmapTickets} />
+      </PageFrame>
+
+      <PageFrame
+        pageIndex={6}
+        pageTotal={totalPages}
+        pageTitle="Tickets · All Sites"
+        pageMeta={`${payload.siteHeatmapTicketsAll.sites.length} sites with tickets in window`}
+        period={period}
+      >
+        <TicketHeatmapPage data={payload.siteHeatmapTicketsAll} hideNotes={true} />
       </PageFrame>
 
       <ReadyBeacon />
