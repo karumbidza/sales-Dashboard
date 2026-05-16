@@ -4,6 +4,7 @@
 import PageFrame from '@/components/print/PageFrame';
 import HeatmapPage from '@/components/print/HeatmapPage';
 import CostPerformancePage from '@/components/print/CostPerformancePage';
+import EfficiencyPage from '@/components/print/EfficiencyPage';
 import { verifyPrintToken } from '@/lib/printAuth';
 import { buildReportPayload, type ReportPayload } from '@/lib/buildReportPayload';
 import ReadyBeacon from './ReadyBeacon';
@@ -72,9 +73,7 @@ export default async function PrintPage({ searchParams }: Props) {
         pageMeta={`${payload.efficiency.openTickets.total} open · ${payload.efficiency.slaHitRate.breaches} SLA breaches`}
         period={period}
       >
-        <div data-placeholder-page="efficiency" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 11 }}>
-          Operational Efficiency — placeholder (Task 7 wires real content)
-        </div>
+        <EfficiencyPage data={payload.efficiency} />
       </PageFrame>
 
       <ReadyBeacon />
