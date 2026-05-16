@@ -47,6 +47,7 @@ export async function renderPdf(printUrl: string): Promise<Buffer> {
     await page.waitForSelector('body[data-report-ready="true"]', { timeout: 30_000 });
     const pdf = await page.pdf({
       format:            'Letter',
+      landscape:         true,
       printBackground:   true,
       preferCSSPageSize: true,
       margin:            { top: 0, right: 0, bottom: 0, left: 0 },

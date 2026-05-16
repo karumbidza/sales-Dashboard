@@ -4,7 +4,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @page {
-  size: Letter portrait;
+  size: Letter landscape;
   margin: 0;
 }
 
@@ -21,19 +21,29 @@ html, body {
 
 /* ── Page container ───────────────────────────────────────────────── */
 .report-page {
-  width: 8.5in;
-  height: 11in;
-  padding: 0.5in 0.6in;
+  width: 11in;
+  height: 8.5in;
+  padding: 0.4in 0.5in;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
+  background: white;
   page-break-after: always;
   break-after: page;
 }
 .report-page:last-child {
   page-break-after: auto;
   break-after: auto;
+}
+
+/* Browser-only — give each page a card-like shadow when viewed on
+   screen via /reports/rm/preview. Print output is unaffected. */
+@media screen {
+  .report-page {
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+    border-radius: 2px;
+  }
 }
 
 /* ── Header strip ─────────────────────────────────────────────────── */
@@ -125,9 +135,11 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   border-collapse: collapse;
   table-layout: fixed;
 }
-.hm-col-site  { width: 17%; }
-.hm-col-note  { width: 20%; }
-.hm-col-total { width: 7%; }
+/* Landscape Letter usable width is ~9.8in / 706pt — enough for 13
+   category columns and a real Notes column. */
+.hm-col-site  { width: 11%; }
+.hm-col-note  { width: 24%; }
+.hm-col-total { width: 6%; }
 
 .hm-th {
   font-size: 6.5pt;
