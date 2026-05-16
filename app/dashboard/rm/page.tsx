@@ -8,9 +8,6 @@ import CostKpiStrip from '@/components/rm/CostKpiStrip';
 import CostParetoChart from '@/components/rm/CostParetoChart';
 import CostTrendChart from '@/components/rm/CostTrendChart';
 import CostHeatmap from '@/components/rm/CostHeatmap';
-import EfficiencyKpiStrip from '@/components/rm/EfficiencyKpiStrip';
-import TicketAgingChart from '@/components/rm/TicketAgingChart';
-import RecurringIssuesPanel from '@/components/rm/RecurringIssuesPanel';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -105,7 +102,7 @@ export default function RMCommandCenterPage() {
             <ChartIcon />
             <div>
               <h1 className="text-base font-bold tracking-wide leading-tight">Redan Sales Dashboard</h1>
-              <p className="text-[11px]" style={{ color: '#93c5fd' }}>R&amp;M Command Center · cost &amp; efficiency · tracked separately</p>
+              <p className="text-[11px]" style={{ color: '#93c5fd' }}>R&amp;M Cost · spend × site × category</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -206,15 +203,6 @@ export default function RMCommandCenterPage() {
             />
           </div>
 
-          {/* Helpdesk / efficiency. */}
-          <div>
-            <LensDivider label="EFFICIENCY LENS · OPERATIONAL · HELPDESK" accent="efficiency" />
-            <EfficiencyKpiStrip filters={filters} />
-          </div>
-          <div className="grid grid-cols-2 gap-[10px]">
-            <div><TicketAgingChart filters={filters} /></div>
-            <div><RecurringIssuesPanel filters={filters} /></div>
-          </div>
         </div>
       </main>
     </div>
