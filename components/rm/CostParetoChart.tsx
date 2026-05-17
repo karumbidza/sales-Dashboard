@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import type { RMFilters } from './RMFilterBar';
 
@@ -37,9 +38,19 @@ interface Props {
 }
 
 export default function CostParetoChart({ filters }: Props) {
+  const router = useRouter();
   const [dimension, setDimension] = useState<'category' | 'site'>('category');
   const [data, setData] = useState<ParetoResponse | null>(null);
   const [loading, setLoading] = useState(true);
+
+  function onBarClick(it: any) {
+    const labelKey = it?.payload?.labelKey || it?.labelKey;
+    if (!labelKey) return;
+    if (dimension === 'category') {
+      router.push(`/dashboard/category/${encodeURIComponent(labelKey)}`);
+    }
+    // No site drill-in for cost — site is already a dashboard filter.
+  }
 
   useEffect(() => {
     const qs = new URLSearchParams({
@@ -91,7 +102,7 @@ export default function CostParetoChart({ filters }: Props) {
               <Tooltip
                 formatter={(v: number, name: string) => name === 'cumulativePct' ? `${v}%` : fmtCurrency(v)}
               />
-              <Bar yAxisId="left" dataKey="cost">
+              <Bar yAxisId="left" dataKey="cost" onClick={onBarClick} cursor={dimension === 'category' ? 'pointer' : 'default'}>
                 {items.map((it, idx) => <Cell key={idx} fill={TIER_COLOR[it.tier]} />)}
               </Bar>
               <Line yAxisId="right" type="monotone" dataKey="cumulativePct" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} />
@@ -102,8 +113,9 @@ export default function CostParetoChart({ filters }: Props) {
         )}
       </div>
 
-      <div className="text-[10px] text-gray-500 mt-2">
-        {data && `${data.itemsTo80} ${data.dimension === 'category' ? 'categories' : 'sites'} drive 80% of cost`}
+      <div className="text-[10px] text-gray-500 mt-2 flex items-center justify-between">
+        <span>{data && `${data.itemsTo80} ${data.dimension === 'category' ? 'categories' : 'sites'} drive 80% of cost`}</span>
+        {dimension === 'category' && <span className="italic">click a bar to deep-dive</span>}
       </div>
     </div>
   );

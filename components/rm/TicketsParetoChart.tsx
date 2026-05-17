@@ -6,6 +6,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import type { RMFilters } from './RMFilterBar';
 
@@ -36,9 +37,20 @@ interface Props {
 }
 
 export default function TicketsParetoChart({ filters }: Props) {
+  const router = useRouter();
   const [dimension, setDimension] = useState<'category' | 'site'>('category');
   const [data, setData] = useState<ParetoResponse | null>(null);
   const [loading, setLoading] = useState(true);
+
+  function onBarClick(it: any) {
+    const labelKey = it?.payload?.labelKey || it?.labelKey;
+    if (!labelKey) return;
+    if (dimension === 'category') {
+      router.push(`/dashboard/category/${encodeURIComponent(labelKey)}`);
+    } else {
+      router.push(`/dashboard/helpdesk?siteCode=${encodeURIComponent(labelKey)}`);
+    }
+  }
 
   useEffect(() => {
     const qs = new URLSearchParams({
@@ -90,7 +102,7 @@ export default function TicketsParetoChart({ filters }: Props) {
               <Tooltip
                 formatter={(v: number, name: string) => name === 'cumulativePct' ? `${v}%` : `${v} tickets`}
               />
-              <Bar yAxisId="left" dataKey="count">
+              <Bar yAxisId="left" dataKey="count" onClick={onBarClick} cursor="pointer">
                 {items.map((it, idx) => <Cell key={idx} fill={TIER_COLOR[it.tier]} />)}
               </Bar>
               <Line yAxisId="right" type="monotone" dataKey="cumulativePct" stroke="#dc2626" strokeWidth={2} dot={{ r: 2 }} />
@@ -101,8 +113,9 @@ export default function TicketsParetoChart({ filters }: Props) {
         )}
       </div>
 
-      <div className="text-[10px] text-gray-500 mt-2">
-        {data && `${data.itemsTo80} ${data.dimension === 'category' ? 'categories' : 'sites'} drive 80% of tickets`}
+      <div className="text-[10px] text-gray-500 mt-2 flex items-center justify-between">
+        <span>{data && `${data.itemsTo80} ${data.dimension === 'category' ? 'categories' : 'sites'} drive 80% of tickets`}</span>
+        <span className="italic">click a bar to deep-dive</span>
       </div>
     </div>
   );
