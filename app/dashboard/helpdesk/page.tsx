@@ -4,7 +4,7 @@
 // with /dashboard/rm (same combined 5-page report).
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RMFilterBar, { defaultRMFilters, RMFilters } from '@/components/rm/RMFilterBar';
@@ -33,6 +33,23 @@ export default function HelpdeskPage() {
   const router = useRouter();
   const [filters, setFilters] = useState<RMFilters>(defaultRMFilters());
   const [generating, setGenerating] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+
+  // Shared notes store with /dashboard/rm — same date-windowed key, since
+  // both pages feed the same combined Generate R&M Report PDF.
+  const notesKey = `rm-notes-${filters.dateFrom}-${filters.dateTo}`;
+  const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setNotes(localStorage.getItem(notesKey) || '');
+  }, [notesKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (notes) localStorage.setItem(notesKey, notes);
+    else localStorage.removeItem(notesKey);
+  }, [notes, notesKey]);
 
   async function handleGeneratePDF() {
     if (generating) return;
@@ -84,6 +101,14 @@ export default function HelpdeskPage() {
             <span className="text-[11px]" style={{ color: '#93c5fd' }}>
               {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
+            <button onClick={() => setNotesOpen(true)}
+                    className="relative flex items-center gap-1.5 text-xs font-medium text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-md transition"
+                    title="Edit report notes">
+              Notes
+              {notes.trim() && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" aria-label="notes present" />
+              )}
+            </button>
             <button onClick={handleGeneratePDF} disabled={generating}
                     className="flex items-center gap-1.5 text-xs font-medium text-white bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-md transition">
               {generating ? 'Generating PDF…' : 'Generate R&M Report'}
@@ -136,6 +161,55 @@ export default function HelpdeskPage() {
           }
         `}</style>
       </main>
+
+      {notesOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Report notes editor"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setNotesOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-2xl w-full max-w-2xl mx-4 flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Report Notes</div>
+                <div className="text-[11px] text-gray-500">
+                  saved locally per date window · shared with R&amp;M Cost · shows in the PDF
+                </div>
+              </div>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="text-gray-400 hover:text-gray-700 text-xl leading-none px-2"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                autoFocus
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Short overview of the helpdesk charts: e.g. 'Open ticket volume up 12% vs last month, driven by Pumps/Dispensers at WARREN HILLS (51 open). Aging healthy — only 4 tickets over 90 days. Top 5 categories account for 80% of all tickets.'"
+                className="w-full text-sm border border-gray-200 rounded p-2 min-h-[200px] resize-y focus:outline-none focus:border-[#1e3a5f]"
+              />
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-200 text-[11px] text-gray-500">
+              <span>Window: {filters.dateFrom} → {filters.dateTo}</span>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="text-xs font-medium px-3 py-1.5 rounded-md bg-[#1e3a5f] text-white hover:bg-[#16304f] transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
