@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const provider    = sp.get('provider')    || undefined;
     const description = sp.get('description') || undefined;
     const ticketId    = sp.get('ticketId')    || undefined;
+    const openOnly    = sp.get('openOnly') === 'true';
     const limit       = Math.min(Math.max(1, parseInt(sp.get('limit') || '200')), 500);
 
     const clauses: string[] = ['1=1'];
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
     if (siteCode)    { clauses.push(`t.site_code = $${p++}`); params.push(siteCode); }
     if (provider)    { clauses.push(`t.service_provider = $${p++}`); params.push(provider); }
     if (description) { clauses.push(`t.description_norm = $${p++}`); params.push(description); }
+    if (openOnly)    { clauses.push(`t.status NOT IN ('Closed','Resolved')`); }
     if (ticketId) {
       const tid = parseInt(ticketId, 10);
       if (Number.isFinite(tid) && tid > 0) {

@@ -116,6 +116,7 @@ export default function TicketAgingChart({ filters }: Props) {
       ...range,
       siteCode: filters.siteCode || undefined,
       category: filters.category || undefined,
+      openOnly: true,
     } satisfies TicketFilters);
   }
 

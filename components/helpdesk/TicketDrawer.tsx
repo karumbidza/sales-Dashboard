@@ -14,6 +14,7 @@ export interface TicketFilters {
   priority?:    string;
   status?:      string;
   provider?:    string;
+  openOnly?:    boolean;
 }
 
 interface Ticket {
@@ -57,6 +58,7 @@ function buildQS(f: TicketFilters): string {
   if (f.priority)    p.set('priority',    f.priority);
   if (f.status)      p.set('status',      f.status);
   if (f.provider)    p.set('provider',    f.provider);
+  if (f.openOnly)    p.set('openOnly',    'true');
   p.set('limit', '200');
   return p.toString();
 }
