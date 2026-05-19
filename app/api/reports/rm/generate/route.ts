@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     const pdf = await renderPdf(printUrl);
 
-    const filename = `Redan-RM-Report-${filters.dateFrom}_to_${filters.dateTo}.pdf`;
+    const filename = `Redan-Coupon-RM-Report-${filters.dateFrom}_to_${filters.dateTo}.pdf`;
     return new NextResponse(pdf.buffer as ArrayBuffer, {
       headers: {
         'Content-Type':        'application/pdf',
