@@ -79,7 +79,7 @@ export default function ReportCover({ cover }: Props) {
   return (
     <section className="p-8" id="exec-report-cover">
       <div className="text-center mb-12 mt-12">
-        <div className="text-sm text-gray-500 uppercase tracking-widest mb-2">Redan Petroleum</div>
+        <div className="text-sm text-gray-500 uppercase tracking-widest mb-2">Redan Coupon</div>
         <h1 className="text-4xl font-bold text-gray-900 mb-3">Monthly Executive Report</h1>
         <div className="text-2xl text-gray-700 mb-2">{cover.monthLabel}</div>
         <div className="text-sm text-gray-500">Generated {generatedAt}</div>
