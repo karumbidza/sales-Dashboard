@@ -4,6 +4,8 @@
 //   3 callout tiles (Worst SLA / Slowest Resolution / Highest Volume).
 import React from 'react';
 import type { ReportPayload } from '@/lib/buildReportPayload';
+import { Arrow } from './Arrow';
+import { formatDelta } from '@/lib/format-delta';
 
 interface Props {
   data: ReportPayload['efficiency'];
@@ -21,17 +23,8 @@ function fmtMTTR(days: number | null): string {
   return `${days.toFixed(1)}d`;
 }
 
-function fmtMTTRDelta(delta: number | null): { text: string; cls: string } {
-  if (delta === null) return { text: '—', cls: 'kpi-dim' };
-  const isUp = delta > 0;
-  const arrow = isUp ? '▲' : delta < 0 ? '▼' : '•';
-  // Rising MTTR is bad (slower resolution); falling is good.
-  const cls = isUp ? 'kpi-bad' : 'kpi-good';
-  return { text: `${arrow} ${Math.abs(delta).toFixed(1)}d`, cls };
-}
-
 export default function EfficiencyPage({ data }: Props) {
-  const mttrDelta = fmtMTTRDelta(data.mttrDays.vsLM);
+  const mttrDelta = formatDelta(data.mttrDays.vsLM, 'down');
   const agingMax = Math.max(1, ...data.aging.map(b => b.count));
 
   return (
@@ -51,7 +44,10 @@ export default function EfficiencyPage({ data }: Props) {
           <div className="ep-kpi-label">MTTR</div>
           <div className="ep-kpi-value">{fmtMTTR(data.mttrDays.value)}</div>
           <div className="ep-kpi-sub">
-            <span className={mttrDelta.cls}>{mttrDelta.text}</span> vs LM
+            <span className={mttrDelta.cls}>
+              <Arrow direction={mttrDelta.direction} />
+              {mttrDelta.magnitude}d
+            </span> vs LM
           </div>
         </div>
         <div className="ep-kpi">
