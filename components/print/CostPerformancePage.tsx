@@ -60,12 +60,17 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
     budget:  cost.trend.budget[i]?.value    ?? 0,
   }));
 
+  // ── Trend chart year labels — derived so they don't go stale at year rollover.
+  const currentYearLabel = new Date().getFullYear();
+  const priorYearLabel   = currentYearLabel - 1;
+
   // ── Cost-tile deltas ────────────────────────────────────────────
   const ytdLy   = formatDelta(cost.ytd.vsLY,     'down');
   const ytdBud  = formatDelta(cost.ytd.vsBudget, 'down');
   const mtdLm   = formatDelta(cost.mtd.vsLM,     'down');
   const mtdBud  = formatDelta(cost.mtd.vsBudget, 'down');
-  const cpLm    = formatDelta(cost.costPerLitre.vsLM, 'down');
+  // vsLM is a cents delta from the API (already in cents, not percent). Use 2 decimal precision.
+  const cpLm    = formatDelta(cost.costPerLitre.vsLM, 'down', { decimals: 2 });
 
   // ── Efficiency-tile deltas ──────────────────────────────────────
   const respLm  = formatDelta(efficiency.ticketsOpened.vsLM, 'down');
@@ -261,9 +266,9 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
             <div className="cp-chart-title">Cost Trend · monthly</div>
             <div className="cp-chart-meta">
               <span style={{ background: '#1e3a5f', display: 'inline-block', width: 6, height: 6, marginRight: 3, verticalAlign: '-0px' }} />
-              2026 &nbsp;
+              {currentYearLabel} &nbsp;
               <span style={{ borderTop: '1px dashed #94a3b8', display: 'inline-block', width: 8, marginRight: 3, verticalAlign: '2px' }} />
-              2025 &nbsp;
+              {priorYearLabel} &nbsp;
               <span style={{ borderTop: '1px dashed #15803d', display: 'inline-block', width: 8, marginRight: 3, verticalAlign: '2px' }} />
               Bud
             </div>
