@@ -21,7 +21,7 @@ export default function PageFrame({
       {/* Header strip ─────────────────────────────────────────────── */}
       <header className="report-page-header">
         <div className="report-page-header-left">
-          <div className="report-eyebrow">REDAN PETROLEUM · R&amp;M REPORT</div>
+          <div className="report-eyebrow">REDAN COUPON · R&amp;M REPORT</div>
           <h1 className="report-page-title">{pageTitle}</h1>
         </div>
         <div className="report-page-header-right">
@@ -35,7 +35,7 @@ export default function PageFrame({
 
       {/* Footer strip ─────────────────────────────────────────────── */}
       <footer className="report-page-footer">
-        <span className="report-footer-text">REDAN PETROLEUM · CONFIDENTIAL</span>
+        <span className="report-footer-text">REDAN COUPON · CONFIDENTIAL</span>
         <span className="report-footer-pageno">{pageIndex} / {pageTotal}</span>
       </footer>
     </section>
