@@ -148,6 +148,36 @@ export async function GET(req: NextRequest) {
     const ytdVolume = parseFloat(volumeRow.total);
     const costPerLitre = ytdVolume > 0 ? ytdCurrent / ytdVolume : null;
 
+    // 7b. MTD cost / litre + prior-month MTD cost / litre (for vsLM delta)
+    const [mtdVolumeRow] = await query<{ total: string }>(
+      `SELECT COALESCE(SUM(s.total_volume), 0)::NUMERIC AS total
+         FROM sales s
+         JOIN sites si ON s.site_code = si.site_code
+         LEFT JOIN territories t ON si.territory_id = t.id
+        WHERE s.sale_date >= $1::DATE AND s.sale_date <= $2::DATE
+          AND ($3::TEXT = '' OR s.site_code = $3)
+          AND ($4::TEXT = '' OR t.tm_code = $4)`,
+      [monthStart, f.dateTo, f.siteCode, f.territory],
+    );
+    const mtdVolume = parseFloat(mtdVolumeRow.total);
+    const costPerLitreMTD = mtdVolume > 0 ? mtdCurrent / mtdVolume : null;
+
+    const [priorMtdVolumeRow] = await query<{ total: string }>(
+      `SELECT COALESCE(SUM(s.total_volume), 0)::NUMERIC AS total
+         FROM sales s
+         JOIN sites si ON s.site_code = si.site_code
+         LEFT JOIN territories t ON si.territory_id = t.id
+        WHERE s.sale_date >= $1::DATE AND s.sale_date <= $2::DATE
+          AND ($3::TEXT = '' OR s.site_code = $3)
+          AND ($4::TEXT = '' OR t.tm_code = $4)`,
+      [priorMonthStart, priorMonthEnd, f.siteCode, f.territory],
+    );
+    const priorMtdVolume = parseFloat(priorMtdVolumeRow.total);
+    const costPerLitrePriorMTD = priorMtdVolume > 0 ? mtdPriorMonth / priorMtdVolume : null;
+    const costPerLitreVsLM = (costPerLitreMTD !== null && costPerLitrePriorMTD !== null)
+      ? +((costPerLitreMTD - costPerLitrePriorMTD) * 100).toFixed(2)   // cents delta
+      : null;
+
     const perSiteRatios = await query<{ ratio: string }>(
       `SELECT (SUM(i.net_cost) / NULLIF(sa.volume, 0))::NUMERIC AS ratio
          FROM rm_invoices i
@@ -176,7 +206,7 @@ export async function GET(req: NextRequest) {
           : (ratios[ratios.length / 2 - 1] + ratios[ratios.length / 2]) / 2)
       : null;
 
-    // 8. Top category (YTD)
+    // 8. Top category (MTD — current month-to-date)
     const topCats = await query<{ slug: string; display_name: string; total: string }>(
       `SELECT c.slug, c.display_name, SUM(i.net_cost)::NUMERIC AS total
          FROM rm_invoices i
@@ -192,14 +222,44 @@ export async function GET(req: NextRequest) {
         GROUP BY c.slug, c.display_name
         ORDER BY total DESC NULLS LAST
         LIMIT 1`,
-      [yearStart, f.dateTo, f.siteCode, f.territory],
+      [monthStart, f.dateTo, f.siteCode, f.territory],
     );
     const topCat = topCats[0];
+
+    // 8b. Top contributors within the top category (MTD)
+    let topCategoryContributors: Array<{ rank: 1 | 2 | 3; siteName: string; value: number }> = [];
+    if (topCat) {
+      const contribRows = await query<{ site_name: string; value: string }>(
+        `SELECT s.budget_name AS site_name,
+                SUM(i.net_cost)::NUMERIC AS value
+           FROM rm_invoices i
+           JOIN sites s ON i.site_code = s.site_code
+           LEFT JOIN territories t ON s.territory_id = t.id
+           LEFT JOIN rm_description_categories r ON i.description_norm = r.description_norm
+           LEFT JOIN rm_categories c ON r.category_id = c.id
+          WHERE i.cost_center='retail'
+            AND i.service_date >= $1::DATE AND i.service_date <= $2::DATE
+            AND c.slug = $3
+            AND ($4::TEXT = '' OR i.site_code = $4)
+            AND ($5::TEXT = '' OR t.tm_code = $5)
+          GROUP BY s.budget_name
+          ORDER BY value DESC NULLS LAST
+          LIMIT 3`,
+        [monthStart, f.dateTo, topCat.slug, f.siteCode, f.territory],
+      );
+      topCategoryContributors = contribRows.map((r, i) => ({
+        rank: (i + 1) as 1 | 2 | 3,
+        siteName: r.site_name,
+        value: parseFloat(r.value),
+      }));
+    }
+
     const topCategory = topCat
       ? {
           displayName: topCat.display_name,
           total: parseFloat(topCat.total),
-          pctOfTotal: ytdCurrent > 0 ? +(parseFloat(topCat.total) / ytdCurrent * 100).toFixed(1) : null,
+          pctOfTotal: mtdCurrent > 0 ? +(parseFloat(topCat.total) / mtdCurrent * 100).toFixed(1) : null,
+          contributors: topCategoryContributors,
         }
       : null;
 
@@ -221,7 +281,8 @@ export async function GET(req: NextRequest) {
         },
         costPerLitre: {
           current:     costPerLitre,
-          fleetMedian: fleetMedian,
+          vsLM:        costPerLitreVsLM,    // cents delta (positive = up vs LM)
+          fleetMedian: fleetMedian,         // kept for backward compat with dashboard
         },
         topCategory,
       },
