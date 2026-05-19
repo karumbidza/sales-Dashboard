@@ -65,7 +65,11 @@ export default async function PrintPage({ searchParams }: Props) {
         pageMeta={payload.cost.topCategory ? `Top category: ${payload.cost.topCategory.name}` : undefined}
         period={period}
       >
-        <CostPerformancePage data={payload.cost} />
+        <CostPerformancePage
+          cost={payload.cost}
+          efficiency={payload.efficiency}
+          territory={payload.territory}
+        />
       </PageFrame>
 
       <PageFrame
