@@ -22,17 +22,18 @@ export interface ReportPayload {
   cost: {
     ytd:           { value: number; vsLY: number | null;        vsBudget: number | null };
     mtd:           { value: number; vsLM: number | null;        vsBudget: number | null };
-    costPerLitre:  { value: number | null; fleetMedian: number | null };
-    topCategory:   { name: string; value: number; pctOfTotal: number } | null;
+    costPerLitre:  { value: number | null; vsLM: number | null };
+    topCategory:   {
+      name: string;
+      value: number;
+      pctOfTotal: number;
+      contributors: Array<{ rank: 1 | 2 | 3; siteName: string; value: number }>;
+    } | null;
     pareto:        Array<{ category: string; value: number; cumulativePct: number }>;
     trend: {
       current:   Array<{ month: string; value: number }>;
       priorYear: Array<{ month: string; value: number }>;
       budget:    Array<{ month: string; value: number }>;
-    };
-    topMovers: {
-      rising:  Array<{ siteCode: string; siteName: string; currentCost: number; priorCost: number; delta: number }>;
-      falling: Array<{ siteCode: string; siteName: string; currentCost: number; priorCost: number; delta: number }>;
     };
   };
   siteHeatmap: {
@@ -83,6 +84,9 @@ export interface ReportPayload {
     columnTotals: Array<number>;
     grandTotal:   number;
   };
+  territory: {
+    snapshot: Array<{ tmName: string; mtdSpend: number; yoyPct: number | null; barPctOfMax: number }>;
+  };
   efficiency: {
     openTickets:  { total: number; urgent: number };
     mttrDays:     { value: number | null; vsLM: number | null };
@@ -95,6 +99,19 @@ export interface ReportPayload {
       slowestResolution:  { siteCode: string; siteName: string; avgHours: number }   | null;
       highestVolume:      { siteCode: string; siteName: string; tickets: number }     | null;
     };
+    // — Additive fields for page-1 snapshot —
+    ticketsOpened: {
+      value: number;
+      avgResponseHours: number | null;
+      vsLM: number | null;
+      contributors: Array<{ rank: 1 | 2 | 3; siteName: string; count: number }>;
+    };
+    noActionOpen: {
+      value: number;
+      vsLM: number;
+      oldestSites: Array<{ rank: 1 | 2 | 3; siteName: string; openCount: number; staleCount: number }>;
+    };
+    waitingThirdParty: { value: number; vsLM: number };
   };
 }
 
@@ -144,18 +161,17 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     kpisCost,
     pareto,
     trend,
-    topMovers,
     heatmap,
     heatmapTickets,
     notesRows,
     kpisEff,
     aging,
     recurring,
+    territorySnap,
   ] = await Promise.all([
     getJSON<any>(`/api/rm/kpis-cost?${queryStr}`),
     getJSON<any>(`/api/rm/cost-pareto?${queryStr}&dimension=category`),
     getJSON<any>(`/api/rm/cost-trend?${queryStr}`),
-    getJSON<any>(`/api/rm/top-movers?${queryStr}`),
     getJSON<any>(`/api/rm/cost-heatmap?${queryStr}`),
     getJSON<any>(`/api/rm/cost-heatmap?${queryStr}&dimension=tickets`),
     query<{ site_code: string; note_text: string }>(
@@ -168,6 +184,7 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     getJSON<any>(`/api/rm/kpis-efficiency?${queryStr}`),
     getJSON<any>(`/api/rm/ticket-aging?${queryStr}`),
     getJSON<any>(`/api/rm/recurring-issues?${queryStr}&limit=4`),
+    getJSON<any>(`/api/rm/territory-snapshot?${queryStr}`),
   ]);
   // Reshape notesRows to match the previous `notes.data` shape.
   const notes = { data: notesRows.map(r => ({ siteCode: r.site_code, note: r.note_text })) };
@@ -369,14 +386,15 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
         vsBudget: kpisCost.data.mtd.deltaPctBudget,
       },
       costPerLitre: {
-        value:       kpisCost.data.costPerLitre.current,
-        fleetMedian: kpisCost.data.costPerLitre.fleetMedian,
+        value: kpisCost.data.costPerLitre.current,
+        vsLM:  kpisCost.data.costPerLitre.vsLM ?? null,
       },
       topCategory: kpisCost.data.topCategory
         ? {
-            name:       kpisCost.data.topCategory.displayName,
-            value:      kpisCost.data.topCategory.total,
-            pctOfTotal: kpisCost.data.topCategory.pctOfTotal ?? 0,
+            name:         kpisCost.data.topCategory.displayName,
+            value:        kpisCost.data.topCategory.total,
+            pctOfTotal:   kpisCost.data.topCategory.pctOfTotal ?? 0,
+            contributors: kpisCost.data.topCategory.contributors ?? [],
           }
         : null,
       pareto: (pareto.data.items || []).map((p: any) => ({
@@ -388,10 +406,6 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
         current:   (trend.data.currentYear     || []).map((m: any) => ({ month: m.month, value: m.cost })),
         priorYear: (trend.data.priorYearSeries || []).map((m: any) => ({ month: m.month, value: m.cost })),
         budget:    (trend.data.budgetSeries    || []).map((m: any) => ({ month: m.month, value: m.cost })),
-      },
-      topMovers: {
-        rising:  topMovers.data.rising  || [],
-        falling: topMovers.data.falling || [],
       },
     },
     siteHeatmap: {
@@ -424,6 +438,9 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
       columnTotals: columnTotalsTAll,
       grandTotal:   grandTotalTAll,
     },
+    territory: {
+      snapshot: territorySnap.data.snapshot || [],
+    },
     efficiency: {
       openTickets: {
         total:  kpisEff.data.openTickets.total,
@@ -451,6 +468,15 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
         sites:    r.siteCount,
       })),
       callouts,
+      ticketsOpened: kpisEff.data.ticketsOpened ?? {
+        value: 0, avgResponseHours: null, vsLM: null, contributors: [],
+      },
+      noActionOpen: kpisEff.data.noActionOpen ?? {
+        value: 0, vsLM: 0, oldestSites: [],
+      },
+      waitingThirdParty: kpisEff.data.waitingThirdParty ?? {
+        value: 0, vsLM: 0,
+      },
     },
   };
 }
