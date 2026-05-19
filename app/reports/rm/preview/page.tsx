@@ -82,11 +82,15 @@ export default async function PreviewPage({ searchParams }: Props) {
       <PageFrame
         pageIndex={1}
         pageTotal={totalPages}
-        pageTitle="Cost Performance"
+        pageTitle="Cost & Operational Snapshot"
         pageMeta={payload.cost.topCategory ? `Top category: ${payload.cost.topCategory.name}` : undefined}
         period={period}
       >
-        <CostPerformancePage data={payload.cost} />
+        <CostPerformancePage
+          cost={payload.cost}
+          efficiency={payload.efficiency}
+          territory={payload.territory}
+        />
       </PageFrame>
 
       <PageFrame
