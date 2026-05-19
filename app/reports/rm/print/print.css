@@ -599,3 +599,206 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   font-weight: 600;
   color: #0f172a;
 }
+
+/* ── Page 1 (v2) snapshot additions ────────────────────────────────── */
+
+/* Lens dividers — section labels with left border */
+.cp-lens {
+  display: flex;
+  align-items: center;
+  font-size: 8pt;
+  font-weight: 700;
+  letter-spacing: 0.7pt;
+  text-transform: uppercase;
+  padding-left: 8pt;
+  margin-top: 2pt;
+  margin-bottom: 2pt;
+}
+.cp-lens-cost {
+  border-left: 2.5pt solid #1e3a5f;
+  color: #1e3a5f;
+}
+.cp-lens-eff {
+  border-left: 2.5pt solid #ea580c;
+  color: #ea580c;
+}
+
+/* Efficiency tile row — 2 tiles, each is a "two-metric" tile */
+.cp-eff-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6pt;
+}
+.cp-eff-tile {
+  border: 0.5pt solid #e5e7eb;
+  background: #f8fafc;
+  border-radius: 4pt;
+  padding: 8pt 10pt;
+  display: flex;
+  flex-direction: column;
+  gap: 3pt;
+}
+.cp-eff-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8pt;
+}
+.cp-eff-metric-left,
+.cp-eff-metric-right {
+  display: flex;
+  flex-direction: column;
+  gap: 2pt;
+}
+.cp-eff-metric-right {
+  text-align: right;
+}
+.cp-eff-metric-label {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.cp-eff-metric-value-big {
+  font-size: 14pt;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.05;
+}
+.cp-eff-metric-value-sm {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.1;
+}
+.cp-eff-metric-sub {
+  font-size: 7pt;
+  color: #475569;
+}
+
+/* Divider line in two-metric / contributor tiles */
+.cp-tile-divider {
+  border-bottom: 0.5pt solid #e5e7eb;
+  margin: 6pt 0 4pt;
+}
+
+/* Contributor list (top 3 sites/tickets/breaches) */
+.cp-contrib-label {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 1pt;
+}
+.cp-contrib-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1pt;
+}
+.cp-contrib-row {
+  display: flex;
+  align-items: baseline;
+  font-size: 7.5pt;
+  gap: 4pt;
+}
+.cp-contrib-rank {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  width: 8pt;
+}
+.cp-contrib-site {
+  flex: 1;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cp-contrib-detail {
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Trend chart bar value labels — rendered as <text> inside the SVG */
+.cp-trend-bar-label {
+  font-size: 7pt;
+  font-weight: 600;
+  fill: #0f172a;
+}
+
+/* Territory Snapshot strip */
+.cp-territory {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+}
+.cp-territory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2pt;
+}
+.cp-territory-title {
+  font-size: 9pt;
+  font-weight: 600;
+  color: #0f172a;
+}
+.cp-territory-sub {
+  font-size: 7pt;
+  color: #64748b;
+}
+.cp-territory-row {
+  display: grid;
+  grid-template-columns: 70pt 1fr 50pt 60pt;
+  gap: 10pt;
+  align-items: center;
+  font-size: 8pt;
+}
+.cp-territory-tm {
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.2pt;
+}
+.cp-territory-bar-track {
+  height: 10pt;
+  background: #f1f5f9;
+  border-radius: 2pt;
+  overflow: hidden;
+}
+.cp-territory-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2pt;
+}
+.cp-territory-bar-1 { background: #1e3a5f; }
+.cp-territory-bar-2 { background: #3b82f6; }
+.cp-territory-spend {
+  text-align: right;
+  font-weight: 600;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.cp-territory-yoy {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chart heights — landscape page 1 needs charts a bit tighter */
+.cp-chart-card-sm {
+  /* SVG fills the container; height set inline on the inner div */
+}
+
+/* Title-row in chart cards: left label + right meta */
+.cp-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2pt;
+}
+.cp-chart-meta {
+  font-size: 7pt;
+  color: #94a3b8;
+}
