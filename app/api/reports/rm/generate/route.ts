@@ -42,11 +42,12 @@ async function warmUpRoutes(base: string, qs: string): Promise<void> {
     `/api/rm/kpis-cost?${qs}`,
     `/api/rm/cost-pareto?${qs}&dimension=category`,
     `/api/rm/cost-trend?${qs}`,
-    `/api/rm/top-movers?${qs}`,
     `/api/rm/cost-heatmap?${qs}`,
+    `/api/rm/cost-heatmap?${qs}&dimension=tickets`,
     `/api/rm/kpis-efficiency?${qs}`,
     `/api/rm/ticket-aging?${qs}`,
     `/api/rm/recurring-issues?${qs}&limit=4`,
+    `/api/rm/territory-snapshot?${qs}`,
   ];
   await Promise.allSettled(
     routes.map(r => fetch(`${base}${r}`, { cache: 'no-store' })),
