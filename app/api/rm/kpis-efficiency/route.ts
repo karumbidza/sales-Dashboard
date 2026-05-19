@@ -28,9 +28,16 @@ export async function GET(req: NextRequest) {
 
     // Period one month earlier (point-in-time backlog comparison).
     // For backlog metrics we compare "open as of dateTo" vs "open as of dateTo - 1 month".
+    // Clamp month-end rollover: setUTCMonth doesn't cap to the target month's length,
+    // so e.g. March 31 minus one month would roll to March 3 instead of Feb 28.
     const priorPeriodEnd = (() => {
       const d = new Date(periodEnd);
+      const originalDay = d.getUTCDate();
       d.setUTCMonth(d.getUTCMonth() - 1);
+      if (d.getUTCDate() !== originalDay) {
+        // Overflow rolled us into the following month; back up to last day of target month.
+        d.setUTCDate(0);
+      }
       return d.toISOString().slice(0, 10);
     })();
 
