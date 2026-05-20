@@ -338,10 +338,16 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
           <div style={{ fontSize: 8, color: '#94a3b8', fontStyle: 'italic' }}>no territory data in period</div>
         ) : (
           tmRows.map((tm, i) => {
-            const barClass = i < 2 ? 'cp-territory-bar-1' : 'cp-territory-bar-2';
+            const isCentralized = tm.tmName === 'HQ / CENTRALIZED';
+            const barClass = isCentralized
+              ? 'cp-territory-bar-centralized'
+              : (i < 2 ? 'cp-territory-bar-1' : 'cp-territory-bar-2');
+            const rowClass = isCentralized
+              ? 'cp-territory-row cp-territory-row-centralized'
+              : 'cp-territory-row';
             const yoy = formatDelta(tm.yoyPct, 'down', { flatThreshold: 1 });
             return (
-              <div key={tm.tmName} className="cp-territory-row">
+              <div key={tm.tmName} className={rowClass}>
                 <span className="cp-territory-tm">{shortTmName(tm.tmName)}</span>
                 <span className="cp-territory-bar-track">
                   <span className={`cp-territory-bar ${barClass}`} style={{ width: `${tm.barPctOfMax}%` }} />

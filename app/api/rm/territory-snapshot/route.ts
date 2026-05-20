@@ -23,17 +23,17 @@ export async function GET(req: NextRequest) {
       bar_pct_of_max: number | null;
     }>(
       `WITH current AS (
-         SELECT COALESCE(t.tm_name, 'UNASSIGNED') AS tm_name,
+         SELECT COALESCE(t.tm_name, 'HQ / CENTRALIZED') AS tm_name,
                 SUM(i.net_cost)::NUMERIC AS mtd_spend
            FROM rm_invoices i
            JOIN sites s ON i.site_code = s.site_code
            LEFT JOIN territories t ON s.territory_id = t.id
           WHERE i.cost_center = 'retail'
             AND i.service_date BETWEEN $1::DATE AND $2::DATE
-          GROUP BY COALESCE(t.tm_name, 'UNASSIGNED')
+          GROUP BY COALESCE(t.tm_name, 'HQ / CENTRALIZED')
        ),
        prior AS (
-         SELECT COALESCE(t.tm_name, 'UNASSIGNED') AS tm_name,
+         SELECT COALESCE(t.tm_name, 'HQ / CENTRALIZED') AS tm_name,
                 SUM(i.net_cost)::NUMERIC AS prior_spend
            FROM rm_invoices i
            JOIN sites s ON i.site_code = s.site_code
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
           WHERE i.cost_center = 'retail'
             AND i.service_date BETWEEN $1::DATE - INTERVAL '1 year'
                                    AND $2::DATE - INTERVAL '1 year'
-          GROUP BY COALESCE(t.tm_name, 'UNASSIGNED')
+          GROUP BY COALESCE(t.tm_name, 'HQ / CENTRALIZED')
        ),
        max_spend AS (SELECT MAX(mtd_spend) AS m FROM current)
        SELECT

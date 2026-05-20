@@ -1009,6 +1009,22 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
 }
 .cp-territory-bar-1 { background: #1e3a5f; }
 .cp-territory-bar-2 { background: #3b82f6; }
+.cp-territory-bar-centralized { background: #cbd5e1; }
+
+/* Centralized / HQ row — visually demoted so it reads as overhead,
+   not a peer of the territory managers. */
+.cp-territory-row-centralized {
+  font-style: italic;
+  color: #64748b;
+}
+.cp-territory-row-centralized .cp-territory-tm {
+  color: #64748b;
+  font-weight: 600;
+}
+.cp-territory-row-centralized .cp-territory-spend {
+  color: #64748b;
+  font-weight: 500;
+}
 .cp-territory-spend {
   text-align: right;
   font-weight: 600;
