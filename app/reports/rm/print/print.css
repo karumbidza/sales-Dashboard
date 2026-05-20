@@ -325,12 +325,14 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #64748b;
 }
 .cp-kpi-value {
-  font-size: 12.5pt;
+  font-size: 11pt;
   font-weight: 600;
   color: #0f172a;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 .cp-kpi-cat {
+  /* category-name tile uses the same 11pt as cost figures so the
+     baselines align across the cost row */
   font-size: 11pt;
 }
 .cp-kpi-sub {
