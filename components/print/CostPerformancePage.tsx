@@ -160,12 +160,12 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
           </div>
         </div>
 
-        {/* Top Category · MTD — 2-column tile: stacked name + sub on left,
-            contributors with vertical separator on right. */}
-        <div className="cp-kpi">
-          <div className="cp-kpi-label">Top Category · MTD</div>
+        {/* Top Category · MTD — labels owned by each column so they share
+            the same top baseline as the contributors label on the right. */}
+        <div className="cp-kpi cp-kpi-split-tile">
           <div className="cp-kpi-body-split">
             <div className="cp-kpi-main">
+              <div className="cp-kpi-label">Top Category · MTD</div>
               <div className="cp-kpi-value cp-kpi-cat">{cost.topCategory?.name || '—'}</div>
               <div className="cp-kpi-sub">
                 {cost.topCategory

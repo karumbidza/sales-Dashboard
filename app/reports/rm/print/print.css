@@ -881,8 +881,15 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
 .cp-kpi-main {
   display: flex;
   flex-direction: column;
-  gap: 2pt;
+  gap: 3pt;
   min-width: 0;
+}
+
+/* When the tile uses cp-kpi-body-split, the label lives inside the main
+   column (not at the tile root), so the tile flex itself shouldn't add
+   its own 3pt gap above the body. */
+.cp-kpi-split-tile {
+  gap: 0;
 }
 
 /* Compact stacked-row layout for YTD/MTD tile sub-stats */
