@@ -324,7 +324,7 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #64748b;
 }
 .cp-kpi-value {
-  font-size: 14pt;
+  font-size: 12.5pt;
   font-weight: 600;
   color: #0f172a;
   line-height: 1.1;
@@ -804,7 +804,7 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
 .cp-kpi-body {
   display: flex;
   align-items: center;
-  gap: 10pt;
+  gap: 6pt;
   min-width: 0;
   flex: 1;
 }
