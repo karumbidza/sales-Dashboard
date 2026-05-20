@@ -57,16 +57,19 @@ export async function GET(req: NextRequest) {
       [yearStart, nextYearStart, siteCode, territory],
     );
 
-    // Build 12-month arrays for both years + the current-year budget.
-    // The rm_budget view stops at the current month, so we project the budget
-    // forward to the end of the year by carrying the most recent month's value
-    // — gives the chart a continuous annual envelope to compare against.
+    // Build monthly arrays for both years + the current-year budget.
+    // The series respects the filter's `dateTo` — we only emit months
+    // up to and including periodEnd's month, so filtering "end of April"
+    // doesn't bleed May data into the chart.
+    // Budget projects forward by carrying the last month's value when
+    // rm_budget view hasn't yet emitted a row for the period.
     const cy: { month: string; cost: number }[] = [];
     const py: { month: string; cost: number }[] = [];
     const bud: { month: string; cost: number }[] = [];
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const endMonth = periodEnd.getUTCMonth() + 1;  // 1-12, inclusive
     let lastBudget = 0;
-    for (let m = 1; m <= 12; m++) {
+    for (let m = 1; m <= endMonth; m++) {
       const cyRow  = rows.find(r => r.yr === year     && r.mo === m);
       const pyRow  = rows.find(r => r.yr === year - 1 && r.mo === m);
       const budRow = budgetRows.find(b => b.mo === m);
