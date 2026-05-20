@@ -798,14 +798,35 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   gap: 6pt;
 }
 
+/* Horizontal tile body: key figure on the left, sub-stats stacked to
+   the right. Uses the empty horizontal whitespace that was previously
+   below the value, shaving ~25pt off each tile row. */
+.cp-kpi-body {
+  display: flex;
+  align-items: center;
+  gap: 10pt;
+  min-width: 0;
+  flex: 1;
+}
+.cp-kpi-body .cp-kpi-value {
+  flex-shrink: 0;
+}
+.cp-kpi-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2pt;
+}
+
 /* Compact stacked-row layout for YTD/MTD tile sub-stats */
 .cp-kpi-substat {
   display: grid;
-  grid-template-columns: 28pt 1fr auto;
+  grid-template-columns: 22pt 1fr auto;
   gap: 4pt;
   font-size: 7pt;
   align-items: baseline;
-  line-height: 1.25;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 .cp-kpi-substat-label {
