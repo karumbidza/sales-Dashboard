@@ -22,7 +22,7 @@ export function Arrow({ direction, size = 7 }: Props) {
     <svg
       width={size}
       height={size}
-      style={{ verticalAlign: '-1px', marginRight: '2px' }}
+      style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '2px' }}
       aria-hidden="true"
     >
       <use href={SYMBOL_ID[direction]} />

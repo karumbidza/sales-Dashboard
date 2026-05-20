@@ -93,10 +93,19 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
         <div className="cp-kpi">
           <div className="cp-kpi-label">YTD R&amp;M Cost</div>
           <div className="cp-kpi-value">{fmtCurrency(cost.ytd.value)}</div>
-          <div className="cp-kpi-sub">
-            <span className={ytdLy.cls}><Arrow direction={ytdLy.direction} />{ytdLy.magnitude}%</span> LY
-            {' · '}
-            <span className={ytdBud.cls}><Arrow direction={ytdBud.direction} />{ytdBud.magnitude}%</span> Bud
+          <div className="cp-kpi-substat">
+            <span className="cp-kpi-substat-label">LY</span>
+            <span className="cp-kpi-substat-value">{fmtCurrency(cost.ytd.priorYear)}</span>
+            <span className={`cp-kpi-substat-delta ${ytdLy.cls}`}>
+              <Arrow direction={ytdLy.direction} />{ytdLy.magnitude}%
+            </span>
+          </div>
+          <div className="cp-kpi-substat">
+            <span className="cp-kpi-substat-label">Bud</span>
+            <span className="cp-kpi-substat-value">{fmtCurrency(cost.ytd.budget)}</span>
+            <span className={`cp-kpi-substat-delta ${ytdBud.cls}`}>
+              <Arrow direction={ytdBud.direction} />{ytdBud.magnitude}%
+            </span>
           </div>
         </div>
 
@@ -104,10 +113,19 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
         <div className="cp-kpi">
           <div className="cp-kpi-label">MTD R&amp;M Cost</div>
           <div className="cp-kpi-value">{fmtCurrency(cost.mtd.value)}</div>
-          <div className="cp-kpi-sub">
-            <span className={mtdLm.cls}><Arrow direction={mtdLm.direction} />{mtdLm.magnitude}%</span> LM
-            {' · '}
-            <span className={mtdBud.cls}><Arrow direction={mtdBud.direction} />{mtdBud.magnitude}%</span> Bud
+          <div className="cp-kpi-substat">
+            <span className="cp-kpi-substat-label">LM</span>
+            <span className="cp-kpi-substat-value">{fmtCurrency(cost.mtd.priorMonth)}</span>
+            <span className={`cp-kpi-substat-delta ${mtdLm.cls}`}>
+              <Arrow direction={mtdLm.direction} />{mtdLm.magnitude}%
+            </span>
+          </div>
+          <div className="cp-kpi-substat">
+            <span className="cp-kpi-substat-label">Bud</span>
+            <span className="cp-kpi-substat-value">{fmtCurrency(cost.mtd.budget)}</span>
+            <span className={`cp-kpi-substat-delta ${mtdBud.cls}`}>
+              <Arrow direction={mtdBud.direction} />{mtdBud.magnitude}%
+            </span>
           </div>
         </div>
 
@@ -136,8 +154,10 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
               <div className="cp-contrib-list">
                 {cost.topCategory.contributors.map(c => (
                   <div key={c.rank} className="cp-contrib-row">
-                    <span className="cp-contrib-rank">{c.rank}</span>
-                    <span className="cp-contrib-site">{c.siteName}</span>
+                    <div className="cp-contrib-row-top">
+                      <span className="cp-contrib-rank">{c.rank}</span>
+                      <span className="cp-contrib-site">{c.siteName}</span>
+                    </div>
                     <span className="cp-contrib-detail">{fmtCurrency(c.value)}</span>
                   </div>
                 ))}
@@ -173,12 +193,14 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
           <div className="cp-contrib-label">Top contributing sites</div>
           <div className="cp-contrib-list">
             {efficiency.ticketsOpened.contributors.length === 0 ? (
-              <div className="cp-contrib-row"><span className="cp-contrib-site" style={{ fontStyle: 'italic', color: '#94a3b8', fontWeight: 400 }}>no tickets in period</span></div>
+              <div className="cp-contrib-row" style={{ gridColumn: '1 / -1' }}><span className="cp-contrib-site" style={{ fontStyle: 'italic', color: '#94a3b8', fontWeight: 400 }}>no tickets in period</span></div>
             ) : (
               efficiency.ticketsOpened.contributors.map(c => (
                 <div key={c.rank} className="cp-contrib-row">
-                  <span className="cp-contrib-rank">{c.rank}</span>
-                  <span className="cp-contrib-site">{c.siteName}</span>
+                  <div className="cp-contrib-row-top">
+                    <span className="cp-contrib-rank">{c.rank}</span>
+                    <span className="cp-contrib-site">{c.siteName}</span>
+                  </div>
                   <span className="cp-contrib-detail">{c.count} tickets</span>
                 </div>
               ))
@@ -212,12 +234,14 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
           <div className="cp-contrib-label">Most un-actioned sites</div>
           <div className="cp-contrib-list">
             {efficiency.noActionOpen.oldestSites.length === 0 ? (
-              <div className="cp-contrib-row"><span className="cp-contrib-site" style={{ fontStyle: 'italic', color: '#94a3b8', fontWeight: 400 }}>no open backlog</span></div>
+              <div className="cp-contrib-row" style={{ gridColumn: '1 / -1' }}><span className="cp-contrib-site" style={{ fontStyle: 'italic', color: '#94a3b8', fontWeight: 400 }}>no open backlog</span></div>
             ) : (
               efficiency.noActionOpen.oldestSites.map(s => (
                 <div key={s.rank} className="cp-contrib-row">
-                  <span className="cp-contrib-rank">{s.rank}</span>
-                  <span className="cp-contrib-site">{s.siteName}</span>
+                  <div className="cp-contrib-row-top">
+                    <span className="cp-contrib-rank">{s.rank}</span>
+                    <span className="cp-contrib-site">{s.siteName}</span>
+                  </div>
                   <span className="cp-contrib-detail">
                     {s.openCount} open{s.staleCount > 0 ? ` · ${s.staleCount} >30d` : ''}
                   </span>
@@ -235,7 +259,7 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
             <div className="cp-chart-title">Cost Pareto · by category</div>
             <div className="cp-chart-meta">MTD</div>
           </div>
-          <div style={{ width: '100%', height: 170 }}>
+          <div style={{ width: '100%', height: 155 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={paretoData} margin={{ top: 6, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -273,7 +297,7 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
               Bud
             </div>
           </div>
-          <div style={{ width: '100%', height: 170 }}>
+          <div style={{ width: '100%', height: 155 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={trendMerged} margin={{ top: 14, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />

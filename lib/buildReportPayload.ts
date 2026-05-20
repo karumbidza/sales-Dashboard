@@ -20,8 +20,8 @@ export interface ReportPayload {
     currency:  'USD';
   };
   cost: {
-    ytd:           { value: number; vsLY: number | null;        vsBudget: number | null };
-    mtd:           { value: number; vsLM: number | null;        vsBudget: number | null };
+    ytd:           { value: number; priorYear: number; budget: number; vsLY: number | null; vsBudget: number | null };
+    mtd:           { value: number; priorMonth: number; budget: number; vsLM: number | null; vsBudget: number | null };
     costPerLitre:  { value: number | null; vsLM: number | null };
     topCategory:   {
       name: string;
@@ -376,14 +376,18 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     },
     cost: {
       ytd: {
-        value:    kpisCost.data.ytd.current,
-        vsLY:     kpisCost.data.ytd.deltaPctLY,
-        vsBudget: kpisCost.data.ytd.deltaPctBudget,
+        value:     kpisCost.data.ytd.current,
+        priorYear: kpisCost.data.ytd.priorYear ?? 0,
+        budget:    kpisCost.data.ytd.budget ?? 0,
+        vsLY:      kpisCost.data.ytd.deltaPctLY,
+        vsBudget:  kpisCost.data.ytd.deltaPctBudget,
       },
       mtd: {
-        value:    kpisCost.data.mtd.current,
-        vsLM:     kpisCost.data.mtd.deltaPctMoM,
-        vsBudget: kpisCost.data.mtd.deltaPctBudget,
+        value:      kpisCost.data.mtd.current,
+        priorMonth: kpisCost.data.mtd.priorMonth ?? 0,
+        budget:     kpisCost.data.mtd.budget ?? 0,
+        vsLM:       kpisCost.data.mtd.deltaPctMoM,
+        vsBudget:   kpisCost.data.mtd.deltaPctBudget,
       },
       costPerLitre: {
         value: kpisCost.data.costPerLitre.current,

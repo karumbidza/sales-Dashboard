@@ -297,7 +297,7 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
 .cp-wrap {
   display: flex;
   flex-direction: column;
-  gap: 10pt;
+  gap: 7pt;
   flex: 1;
 }
 
@@ -692,21 +692,29 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #64748b;
   margin-bottom: 1pt;
 }
+/* Horizontal 3-column contributor row — saves vertical space inside tiles */
 .cp-contrib-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1pt;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6pt;
 }
 .cp-contrib-row {
   display: flex;
+  flex-direction: column;
+  gap: 0;
+  font-size: 7pt;
+  min-width: 0;       /* allow text-overflow ellipsis inside grid cell */
+}
+.cp-contrib-row-top {
+  display: flex;
   align-items: baseline;
-  font-size: 7.5pt;
-  gap: 4pt;
+  gap: 3pt;
+  min-width: 0;
 }
 .cp-contrib-rank {
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
-  width: 8pt;
+  font-size: 6.5pt;
 }
 .cp-contrib-site {
   flex: 1;
@@ -715,11 +723,37 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 7.5pt;
 }
 .cp-contrib-detail {
   color: #475569;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  font-size: 6.8pt;
+}
+
+/* Compact stacked-row layout for YTD/MTD tile sub-stats */
+.cp-kpi-substat {
+  display: grid;
+  grid-template-columns: 28pt 1fr auto;
+  gap: 4pt;
+  font-size: 7pt;
+  align-items: baseline;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.cp-kpi-substat-label {
+  color: #94a3b8;
+  font-weight: 600;
+  letter-spacing: 0.2pt;
+}
+.cp-kpi-substat-value {
+  color: #475569;
+  font-weight: 500;
+}
+.cp-kpi-substat-delta {
+  text-align: right;
+  font-weight: 600;
 }
 
 /* Trend chart bar value labels — rendered as <text> inside the SVG */
