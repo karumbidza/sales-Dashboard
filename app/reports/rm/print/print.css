@@ -325,15 +325,53 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #64748b;
 }
 .cp-kpi-value {
-  font-size: 11pt;
-  font-weight: 600;
+  /* Hero figure — the thing your eye lands on first. Big and bold
+     because the comparison row sits BELOW it, not inline. */
+  font-size: 16pt;
+  font-weight: 700;
   color: #0f172a;
-  line-height: 1.15;
+  line-height: 1.1;
 }
 .cp-kpi-cat {
-  /* category-name tile uses the same 11pt as cost figures so the
-     baselines align across the cost row */
+  /* Top Category name is text, not a currency figure, so it uses a
+     smaller size that fits "Compressors / Air" without wrapping. */
   font-size: 11pt;
+  font-weight: 600;
+}
+
+/* Comparison row sits BELOW the hero figure. Two items side by side
+   with a subtle middle-dot separator. */
+.cp-kpi-comp-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 6pt;
+  font-size: 7pt;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  margin-top: 2pt;
+}
+.cp-kpi-comp-item {
+  display: flex;
+  align-items: baseline;
+  gap: 3pt;
+  white-space: nowrap;
+  min-width: 0;
+}
+.cp-kpi-comp-label {
+  color: #94a3b8;
+  font-weight: 600;
+}
+.cp-kpi-comp-value {
+  color: #475569;
+}
+.cp-kpi-comp-delta {
+  font-weight: 600;
+}
+.cp-kpi-comp-sep {
+  color: #cbd5e1;
+  font-weight: 400;
+  flex-shrink: 0;
 }
 .cp-kpi-sub {
   font-size: 7pt;

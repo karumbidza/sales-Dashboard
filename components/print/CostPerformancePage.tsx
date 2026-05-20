@@ -99,63 +99,62 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
 
       {/* 4 cost KPI tiles */}
       <div className="cp-kpi-strip">
-        {/* YTD */}
+        {/* YTD — hero figure with comparisons below */}
         <div className="cp-kpi">
           <div className="cp-kpi-label">YTD R&amp;M Cost</div>
-          <div className="cp-kpi-body">
-            <div className="cp-kpi-value">{fmtCurrency(cost.ytd.value)}</div>
-            <div className="cp-kpi-side">
-              <div className="cp-kpi-substat">
-                <span className="cp-kpi-substat-label">LY</span>
-                <span className="cp-kpi-substat-value">{fmtCurrency(cost.ytd.priorYear)}</span>
-                <span className={`cp-kpi-substat-delta ${ytdLy.cls}`}>
-                  <Arrow direction={ytdLy.direction} />{ytdLy.magnitude}%
-                </span>
-              </div>
-              <div className="cp-kpi-substat">
-                <span className="cp-kpi-substat-label">Bud</span>
-                <span className="cp-kpi-substat-value">{fmtCurrency(cost.ytd.budget)}</span>
-                <span className={`cp-kpi-substat-delta ${ytdBud.cls}`}>
-                  <Arrow direction={ytdBud.direction} />{ytdBud.magnitude}%
-                </span>
-              </div>
+          <div className="cp-kpi-value">{fmtCurrency(cost.ytd.value)}</div>
+          <div className="cp-kpi-comp-row">
+            <div className="cp-kpi-comp-item">
+              <span className="cp-kpi-comp-label">LY</span>
+              <span className="cp-kpi-comp-value">{fmtCurrency(cost.ytd.priorYear)}</span>
+              <span className={`cp-kpi-comp-delta ${ytdLy.cls}`}>
+                <Arrow direction={ytdLy.direction} />{ytdLy.magnitude}%
+              </span>
+            </div>
+            <span className="cp-kpi-comp-sep">·</span>
+            <div className="cp-kpi-comp-item">
+              <span className="cp-kpi-comp-label">Bud</span>
+              <span className="cp-kpi-comp-value">{fmtCurrency(cost.ytd.budget)}</span>
+              <span className={`cp-kpi-comp-delta ${ytdBud.cls}`}>
+                <Arrow direction={ytdBud.direction} />{ytdBud.magnitude}%
+              </span>
             </div>
           </div>
         </div>
 
-        {/* MTD */}
+        {/* MTD — hero figure with comparisons below */}
         <div className="cp-kpi">
           <div className="cp-kpi-label">MTD R&amp;M Cost</div>
-          <div className="cp-kpi-body">
-            <div className="cp-kpi-value">{fmtCurrency(cost.mtd.value)}</div>
-            <div className="cp-kpi-side">
-              <div className="cp-kpi-substat">
-                <span className="cp-kpi-substat-label">LM</span>
-                <span className="cp-kpi-substat-value">{fmtCurrency(cost.mtd.priorMonth)}</span>
-                <span className={`cp-kpi-substat-delta ${mtdLm.cls}`}>
-                  <Arrow direction={mtdLm.direction} />{mtdLm.magnitude}%
-                </span>
-              </div>
-              <div className="cp-kpi-substat">
-                <span className="cp-kpi-substat-label">Bud</span>
-                <span className="cp-kpi-substat-value">{fmtCurrency(cost.mtd.budget)}</span>
-                <span className={`cp-kpi-substat-delta ${mtdBud.cls}`}>
-                  <Arrow direction={mtdBud.direction} />{mtdBud.magnitude}%
-                </span>
-              </div>
+          <div className="cp-kpi-value">{fmtCurrency(cost.mtd.value)}</div>
+          <div className="cp-kpi-comp-row">
+            <div className="cp-kpi-comp-item">
+              <span className="cp-kpi-comp-label">LM</span>
+              <span className="cp-kpi-comp-value">{fmtCurrency(cost.mtd.priorMonth)}</span>
+              <span className={`cp-kpi-comp-delta ${mtdLm.cls}`}>
+                <Arrow direction={mtdLm.direction} />{mtdLm.magnitude}%
+              </span>
+            </div>
+            <span className="cp-kpi-comp-sep">·</span>
+            <div className="cp-kpi-comp-item">
+              <span className="cp-kpi-comp-label">Bud</span>
+              <span className="cp-kpi-comp-value">{fmtCurrency(cost.mtd.budget)}</span>
+              <span className={`cp-kpi-comp-delta ${mtdBud.cls}`}>
+                <Arrow direction={mtdBud.direction} />{mtdBud.magnitude}%
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Cost / Litre */}
+        {/* Cost / Litre — hero with single comparison below */}
         <div className="cp-kpi">
           <div className="cp-kpi-label">Cost / Litre</div>
-          <div className="cp-kpi-body">
-            <div className="cp-kpi-value">{fmtPerLitre(cost.costPerLitre.value)}</div>
-            <div className="cp-kpi-side">
-              <div className="cp-kpi-sub">
-                <span className={cpLm.cls}><Arrow direction={cpLm.direction} />{cpLm.magnitude}¢</span> vs LM
-              </div>
+          <div className="cp-kpi-value">{fmtPerLitre(cost.costPerLitre.value)}</div>
+          <div className="cp-kpi-comp-row">
+            <div className="cp-kpi-comp-item">
+              <span className={`cp-kpi-comp-delta ${cpLm.cls}`}>
+                <Arrow direction={cpLm.direction} />{cpLm.magnitude}¢
+              </span>
+              <span className="cp-kpi-comp-label">vs LM</span>
             </div>
           </div>
         </div>
