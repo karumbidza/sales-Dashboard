@@ -297,7 +297,7 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
 .cp-wrap {
   display: flex;
   flex-direction: column;
-  gap: 7pt;
+  gap: 5pt;
   flex: 1;
 }
 

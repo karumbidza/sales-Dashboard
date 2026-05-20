@@ -39,6 +39,16 @@ function fmtHours(n: number | null): string {
   return `${n.toFixed(1)}h`;
 }
 
+// Strip "'s Territory" / "Territory" suffix and uppercase. Keeps display
+// compact in the 70pt territory-row name column.
+function shortTmName(name: string): string {
+  return name
+    .replace(/'s Territory$/i, '')
+    .replace(/\s+Territory$/i, '')
+    .trim()
+    .toUpperCase();
+}
+
 const PARETO_TIER_COLOR = ['#1e3a5f', '#3b82f6', '#93c5fd', '#cbd5e1'];
 
 export default function CostPerformancePage({ cost, efficiency, territory }: Props) {
@@ -259,7 +269,7 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
             <div className="cp-chart-title">Cost Pareto · by category</div>
             <div className="cp-chart-meta">MTD</div>
           </div>
-          <div style={{ width: '100%', height: 155 }}>
+          <div style={{ width: '100%', height: 135 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={paretoData} margin={{ top: 6, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -297,7 +307,7 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
               Bud
             </div>
           </div>
-          <div style={{ width: '100%', height: 155 }}>
+          <div style={{ width: '100%', height: 135 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={trendMerged} margin={{ top: 14, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -329,7 +339,7 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
             const yoy = formatDelta(tm.yoyPct, 'down', { flatThreshold: 1 });
             return (
               <div key={tm.tmName} className="cp-territory-row">
-                <span className="cp-territory-tm">{tm.tmName}</span>
+                <span className="cp-territory-tm">{shortTmName(tm.tmName)}</span>
                 <span className="cp-territory-bar-track">
                   <span className={`cp-territory-bar ${barClass}`} style={{ width: `${tm.barPctOfMax}%` }} />
                 </span>
