@@ -623,7 +623,8 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   color: #ea580c;
 }
 
-/* Efficiency tile row — 2 tiles, each is a "two-metric" tile */
+/* Efficiency tile row — 2 tiles, each is a 3-column layout:
+   [main metric] [secondary metric] [contributors list with left border] */
 .cp-eff-strip {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -633,16 +634,64 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   border: 0.5pt solid #e5e7eb;
   background: #f8fafc;
   border-radius: 4pt;
-  padding: 8pt 10pt;
-  display: flex;
-  flex-direction: column;
-  gap: 3pt;
+  padding: 6pt 10pt;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 12pt;
+  align-items: center;
 }
 .cp-eff-row {
+  /* legacy — kept for any non-tile usage; tile uses the grid above */
+  display: contents;
+}
+
+/* Contributors column inside an eff tile */
+.cp-eff-contribs {
+  border-left: 0.5pt solid #cbd5e1;
+  padding-left: 10pt;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8pt;
+  flex-direction: column;
+  gap: 1pt;
+  min-width: 0;
+  align-self: stretch;
+  justify-content: center;
+}
+.cp-eff-contribs-label {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.4pt;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 1pt;
+}
+.cp-eff-contribs-row {
+  display: grid;
+  grid-template-columns: 9pt 1fr auto;
+  gap: 4pt;
+  font-size: 7pt;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+.cp-eff-contribs-rank {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 6.5pt;
+}
+.cp-eff-contribs-site {
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cp-eff-contribs-detail {
+  color: #475569;
+  white-space: nowrap;
+}
+.cp-eff-contribs-empty {
+  font-size: 7pt;
+  color: #94a3b8;
+  font-style: italic;
 }
 .cp-eff-metric-left,
 .cp-eff-metric-right {

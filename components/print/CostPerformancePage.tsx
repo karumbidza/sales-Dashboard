@@ -197,81 +197,69 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
       {/* ── OPERATIONAL EFFICIENCY lens ────────────────────────── */}
       <div className="cp-lens cp-lens-eff">OPERATIONAL EFFICIENCY</div>
 
-      {/* 2 efficiency tiles (two-metric layout) */}
+      {/* 2 efficiency tiles — each is a 3-column grid: main metric | secondary | contributors */}
       <div className="cp-eff-strip">
-        {/* Tile 5: Tickets Opened + Avg Response — contributors moved below */}
+        {/* Tile 5: Tickets Opened + Avg Response + Top contributing sites */}
         <div className="cp-eff-tile">
-          <div className="cp-eff-row">
-            <div className="cp-eff-metric-left">
-              <div className="cp-eff-metric-label">Tickets Opened · MTD</div>
-              <div className="cp-eff-metric-value-big">{efficiency.ticketsOpened.value}</div>
-            </div>
-            <div className="cp-eff-metric-right">
-              <div className="cp-eff-metric-label">Avg Response</div>
-              <div className="cp-eff-metric-value-sm">{fmtHours(efficiency.ticketsOpened.avgResponseHours)}</div>
-              <div className="cp-eff-metric-sub">
-                <span className={respLm.cls}>
-                  <Arrow direction={respLm.direction} />{respLm.magnitude}h
-                </span> LM
-              </div>
+          <div className="cp-eff-metric-left">
+            <div className="cp-eff-metric-label">Tickets Opened · MTD</div>
+            <div className="cp-eff-metric-value-big">{efficiency.ticketsOpened.value}</div>
+          </div>
+          <div className="cp-eff-metric-right" style={{ textAlign: 'left' }}>
+            <div className="cp-eff-metric-label">Avg Response</div>
+            <div className="cp-eff-metric-value-sm">{fmtHours(efficiency.ticketsOpened.avgResponseHours)}</div>
+            <div className="cp-eff-metric-sub">
+              <span className={respLm.cls}>
+                <Arrow direction={respLm.direction} />{respLm.magnitude}h
+              </span> LM
             </div>
           </div>
-        </div>
-
-        {/* Tile 6: Backlog Health (no-action + waiting) — contributors below */}
-        <div className="cp-eff-tile">
-          <div className="cp-eff-row">
-            <div className="cp-eff-metric-left">
-              <div className="cp-eff-metric-label">No-Action Open</div>
-              <div className="cp-eff-metric-value-big">{efficiency.noActionOpen.value}</div>
-              <div className="cp-eff-metric-sub">
-                <span className={noActLm.cls}>
-                  <Arrow direction={noActLm.direction} />{noActLm.magnitude}
-                </span> LM
-              </div>
-            </div>
-            <div className="cp-eff-metric-right">
-              <div className="cp-eff-metric-label">Waiting 3rd Party</div>
-              <div className="cp-eff-metric-value-sm">{efficiency.waitingThirdParty.value}</div>
-              <div className="cp-eff-metric-sub">
-                <span className={waitLm.cls}>
-                  <Arrow direction={waitLm.direction} />{waitLm.magnitude}
-                </span> LM
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Efficiency contributor strips — side by side under the 2 eff tiles */}
-      <div className="cp-strip-row">
-        <div className="cp-strip cp-strip-eff">
-          <span className="cp-strip-label">Top contributing sites</span>
-          <div className="cp-strip-items">
+          <div className="cp-eff-contribs">
+            <div className="cp-eff-contribs-label">Top contributing sites</div>
             {efficiency.ticketsOpened.contributors.length === 0 ? (
-              <span className="cp-strip-empty">no tickets in period</span>
+              <span className="cp-eff-contribs-empty">no tickets in period</span>
             ) : (
               efficiency.ticketsOpened.contributors.map(c => (
-                <div key={c.rank} className="cp-strip-item">
-                  <span className="cp-strip-rank">{c.rank}</span>
-                  <span className="cp-strip-site">{c.siteName}</span>
-                  <span className="cp-strip-detail">{c.count} tickets</span>
+                <div key={c.rank} className="cp-eff-contribs-row">
+                  <span className="cp-eff-contribs-rank">{c.rank}</span>
+                  <span className="cp-eff-contribs-site">{c.siteName}</span>
+                  <span className="cp-eff-contribs-detail">{c.count} tickets</span>
                 </div>
               ))
             )}
           </div>
         </div>
-        <div className="cp-strip cp-strip-eff">
-          <span className="cp-strip-label">Most un-actioned sites</span>
-          <div className="cp-strip-items">
+
+        {/* Tile 6: Backlog Health (no-action + waiting) + Most un-actioned sites */}
+        <div className="cp-eff-tile">
+          <div className="cp-eff-metric-left">
+            <div className="cp-eff-metric-label">No-Action Open</div>
+            <div className="cp-eff-metric-value-big">{efficiency.noActionOpen.value}</div>
+            <div className="cp-eff-metric-sub">
+              <span className={noActLm.cls}>
+                <Arrow direction={noActLm.direction} />{noActLm.magnitude}
+              </span> LM
+            </div>
+          </div>
+          <div className="cp-eff-metric-right" style={{ textAlign: 'left' }}>
+            <div className="cp-eff-metric-label">Waiting 3rd Party</div>
+            <div className="cp-eff-metric-value-sm">{efficiency.waitingThirdParty.value}</div>
+            <div className="cp-eff-metric-sub">
+              <span className={waitLm.cls}>
+                <Arrow direction={waitLm.direction} />{waitLm.magnitude}
+              </span> LM
+            </div>
+          </div>
+          <div className="cp-eff-contribs">
+            <div className="cp-eff-contribs-label">Most un-actioned sites</div>
             {efficiency.noActionOpen.oldestSites.length === 0 ? (
-              <span className="cp-strip-empty">no open backlog</span>
+              <span className="cp-eff-contribs-empty">no open backlog</span>
             ) : (
               efficiency.noActionOpen.oldestSites.map(s => (
-                <div key={s.rank} className="cp-strip-item">
-                  <span className="cp-strip-rank">{s.rank}</span>
-                  <span className="cp-strip-site">{s.siteName}</span>
-                  <span className="cp-strip-detail">
+                <div key={s.rank} className="cp-eff-contribs-row">
+                  <span className="cp-eff-contribs-rank">{s.rank}</span>
+                  <span className="cp-eff-contribs-site">{s.siteName}</span>
+                  <span className="cp-eff-contribs-detail">
                     {s.openCount} open{s.staleCount > 0 ? ` · ${s.staleCount} >30d` : ''}
                   </span>
                 </div>
