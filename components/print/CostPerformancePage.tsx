@@ -148,7 +148,7 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
           </div>
         </div>
 
-        {/* Top Category · MTD with top-3 contributors */}
+        {/* Top Category · MTD — contributors moved to strip below */}
         <div className="cp-kpi">
           <div className="cp-kpi-label">Top Category · MTD</div>
           <div className="cp-kpi-value cp-kpi-cat">{cost.topCategory?.name || '—'}</div>
@@ -157,32 +157,33 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
               ? `${fmtCurrency(cost.topCategory.value)} · ${cost.topCategory.pctOfTotal.toFixed(0)}% of MTD`
               : 'no data'}
           </div>
-          {cost.topCategory && cost.topCategory.contributors.length > 0 && (
-            <>
-              <div className="cp-tile-divider" />
-              <div className="cp-contrib-label">Top contributors</div>
-              <div className="cp-contrib-list">
-                {cost.topCategory.contributors.map(c => (
-                  <div key={c.rank} className="cp-contrib-row">
-                    <div className="cp-contrib-row-top">
-                      <span className="cp-contrib-rank">{c.rank}</span>
-                      <span className="cp-contrib-site">{c.siteName}</span>
-                    </div>
-                    <span className="cp-contrib-detail">{fmtCurrency(c.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </div>
       </div>
+
+      {/* Cost contributors strip — top sites within the top category */}
+      {cost.topCategory && cost.topCategory.contributors.length > 0 && (
+        <div className="cp-strip">
+          <span className="cp-strip-label">
+            Top contributors · {cost.topCategory.name}
+          </span>
+          <div className="cp-strip-items">
+            {cost.topCategory.contributors.map(c => (
+              <div key={c.rank} className="cp-strip-item">
+                <span className="cp-strip-rank">{c.rank}</span>
+                <span className="cp-strip-site">{c.siteName}</span>
+                <span className="cp-strip-detail">{fmtCurrency(c.value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── OPERATIONAL EFFICIENCY lens ────────────────────────── */}
       <div className="cp-lens cp-lens-eff">OPERATIONAL EFFICIENCY</div>
 
       {/* 2 efficiency tiles (two-metric layout) */}
       <div className="cp-eff-strip">
-        {/* Tile 5: Tickets Opened + Avg Response */}
+        {/* Tile 5: Tickets Opened + Avg Response — contributors moved below */}
         <div className="cp-eff-tile">
           <div className="cp-eff-row">
             <div className="cp-eff-metric-left">
@@ -199,26 +200,9 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
               </div>
             </div>
           </div>
-          <div className="cp-tile-divider" />
-          <div className="cp-contrib-label">Top contributing sites</div>
-          <div className="cp-contrib-list">
-            {efficiency.ticketsOpened.contributors.length === 0 ? (
-              <div className="cp-contrib-row" style={{ gridColumn: '1 / -1' }}><span className="cp-contrib-site" style={{ fontStyle: 'italic', color: '#94a3b8', fontWeight: 400 }}>no tickets in period</span></div>
-            ) : (
-              efficiency.ticketsOpened.contributors.map(c => (
-                <div key={c.rank} className="cp-contrib-row">
-                  <div className="cp-contrib-row-top">
-                    <span className="cp-contrib-rank">{c.rank}</span>
-                    <span className="cp-contrib-site">{c.siteName}</span>
-                  </div>
-                  <span className="cp-contrib-detail">{c.count} tickets</span>
-                </div>
-              ))
-            )}
-          </div>
         </div>
 
-        {/* Tile 6: Backlog Health (no-action + waiting) */}
+        {/* Tile 6: Backlog Health (no-action + waiting) — contributors below */}
         <div className="cp-eff-tile">
           <div className="cp-eff-row">
             <div className="cp-eff-metric-left">
@@ -240,19 +224,38 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
               </div>
             </div>
           </div>
-          <div className="cp-tile-divider" />
-          <div className="cp-contrib-label">Most un-actioned sites</div>
-          <div className="cp-contrib-list">
+        </div>
+      </div>
+
+      {/* Efficiency contributor strips — side by side under the 2 eff tiles */}
+      <div className="cp-strip-row">
+        <div className="cp-strip cp-strip-eff">
+          <span className="cp-strip-label">Top contributing sites</span>
+          <div className="cp-strip-items">
+            {efficiency.ticketsOpened.contributors.length === 0 ? (
+              <span className="cp-strip-empty">no tickets in period</span>
+            ) : (
+              efficiency.ticketsOpened.contributors.map(c => (
+                <div key={c.rank} className="cp-strip-item">
+                  <span className="cp-strip-rank">{c.rank}</span>
+                  <span className="cp-strip-site">{c.siteName}</span>
+                  <span className="cp-strip-detail">{c.count} tickets</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="cp-strip cp-strip-eff">
+          <span className="cp-strip-label">Most un-actioned sites</span>
+          <div className="cp-strip-items">
             {efficiency.noActionOpen.oldestSites.length === 0 ? (
-              <div className="cp-contrib-row" style={{ gridColumn: '1 / -1' }}><span className="cp-contrib-site" style={{ fontStyle: 'italic', color: '#94a3b8', fontWeight: 400 }}>no open backlog</span></div>
+              <span className="cp-strip-empty">no open backlog</span>
             ) : (
               efficiency.noActionOpen.oldestSites.map(s => (
-                <div key={s.rank} className="cp-contrib-row">
-                  <div className="cp-contrib-row-top">
-                    <span className="cp-contrib-rank">{s.rank}</span>
-                    <span className="cp-contrib-site">{s.siteName}</span>
-                  </div>
-                  <span className="cp-contrib-detail">
+                <div key={s.rank} className="cp-strip-item">
+                  <span className="cp-strip-rank">{s.rank}</span>
+                  <span className="cp-strip-site">{s.siteName}</span>
+                  <span className="cp-strip-detail">
                     {s.openCount} open{s.staleCount > 0 ? ` · ${s.staleCount} >30d` : ''}
                   </span>
                 </div>

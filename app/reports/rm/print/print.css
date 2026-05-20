@@ -732,6 +732,72 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   font-size: 6.8pt;
 }
 
+/* Contributor strip — compact horizontal callout below tile rows.
+   Replaces the previous in-tile contributor lists so all tiles in a
+   row stay at uniform (short) height. */
+.cp-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 8pt;
+  padding: 4pt 8pt;
+  background: #f8fafc;
+  border-radius: 3pt;
+  border-left: 2pt solid #1e3a5f;
+  font-size: 7pt;
+  line-height: 1.25;
+  overflow: hidden;
+}
+.cp-strip-eff { border-left-color: #ea580c; }
+.cp-strip-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4pt;
+  color: #64748b;
+  font-size: 6.5pt;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cp-strip-items {
+  display: flex;
+  flex: 1;
+  gap: 14pt;
+  min-width: 0;
+}
+.cp-strip-item {
+  display: flex;
+  align-items: baseline;
+  gap: 3pt;
+  white-space: nowrap;
+  font-size: 7pt;
+  min-width: 0;
+}
+.cp-strip-rank {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 6.5pt;
+}
+.cp-strip-site {
+  font-weight: 600;
+  color: #0f172a;
+}
+.cp-strip-detail {
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+}
+.cp-strip-empty {
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 7pt;
+}
+
+/* Side-by-side row for the two efficiency contributor strips */
+.cp-strip-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6pt;
+}
+
 /* Compact stacked-row layout for YTD/MTD tile sub-stats */
 .cp-kpi-substat {
   display: grid;
