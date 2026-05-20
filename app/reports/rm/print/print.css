@@ -638,7 +638,7 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   display: grid;
   grid-template-columns: auto auto 1fr;
   gap: 12pt;
-  align-items: center;
+  align-items: start;
 }
 .cp-eff-row {
   /* legacy — kept for any non-tile usage; tile uses the grid above */
@@ -654,7 +654,6 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   gap: 1pt;
   min-width: 0;
   align-self: stretch;
-  justify-content: center;
 }
 .cp-eff-contribs-label {
   font-size: 6.5pt;
