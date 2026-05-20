@@ -301,10 +301,11 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   flex: 1;
 }
 
-/* KPI strip */
+/* KPI strip — Top Category tile is 2x wide so contributors fit inside it
+   with the vertical-separator pattern matching the eff tiles. */
 .cp-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: 1fr 1fr 1fr 2fr;
   gap: 6pt;
 }
 .cp-kpi {
@@ -865,6 +866,23 @@ table tr     { break-inside: avoid; page-break-inside: avoid; }
   display: flex;
   flex-direction: column;
   gap: 2pt;
+}
+
+/* Top Category tile — 2-column split: stacked name+sub on left,
+   contributors with vertical separator on right. */
+.cp-kpi-body-split {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12pt;
+  align-items: start;
+  flex: 1;
+  min-width: 0;
+}
+.cp-kpi-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2pt;
+  min-width: 0;
 }
 
 /* Compact stacked-row layout for YTD/MTD tile sub-stats */

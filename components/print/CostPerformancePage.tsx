@@ -160,39 +160,36 @@ export default function CostPerformancePage({ cost, efficiency, territory }: Pro
           </div>
         </div>
 
-        {/* Top Category · MTD — contributors moved to strip below */}
+        {/* Top Category · MTD — 2-column tile: stacked name + sub on left,
+            contributors with vertical separator on right. */}
         <div className="cp-kpi">
           <div className="cp-kpi-label">Top Category · MTD</div>
-          <div className="cp-kpi-body">
-            <div className="cp-kpi-value cp-kpi-cat">{cost.topCategory?.name || '—'}</div>
-            <div className="cp-kpi-side">
+          <div className="cp-kpi-body-split">
+            <div className="cp-kpi-main">
+              <div className="cp-kpi-value cp-kpi-cat">{cost.topCategory?.name || '—'}</div>
               <div className="cp-kpi-sub">
                 {cost.topCategory
                   ? `${fmtCurrency(cost.topCategory.value)} · ${cost.topCategory.pctOfTotal.toFixed(0)}% of MTD`
                   : 'no data'}
               </div>
             </div>
+            <div className="cp-eff-contribs">
+              <div className="cp-eff-contribs-label">Top contributors</div>
+              {!cost.topCategory || cost.topCategory.contributors.length === 0 ? (
+                <span className="cp-eff-contribs-empty">no contributors</span>
+              ) : (
+                cost.topCategory.contributors.map(c => (
+                  <div key={c.rank} className="cp-eff-contribs-row">
+                    <span className="cp-eff-contribs-rank">{c.rank}</span>
+                    <span className="cp-eff-contribs-site">{c.siteName}</span>
+                    <span className="cp-eff-contribs-detail">{fmtCurrency(c.value)}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Cost contributors strip — top sites within the top category */}
-      {cost.topCategory && cost.topCategory.contributors.length > 0 && (
-        <div className="cp-strip">
-          <span className="cp-strip-label">
-            Top contributors · {cost.topCategory.name}
-          </span>
-          <div className="cp-strip-items">
-            {cost.topCategory.contributors.map(c => (
-              <div key={c.rank} className="cp-strip-item">
-                <span className="cp-strip-rank">{c.rank}</span>
-                <span className="cp-strip-site">{c.siteName}</span>
-                <span className="cp-strip-detail">{fmtCurrency(c.value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── OPERATIONAL EFFICIENCY lens ────────────────────────── */}
       <div className="cp-lens cp-lens-eff">OPERATIONAL EFFICIENCY</div>
