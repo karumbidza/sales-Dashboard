@@ -12,6 +12,7 @@ import EfficiencyKpiStrip from '@/components/rm/EfficiencyKpiStrip';
 import TicketAgingChart from '@/components/rm/TicketAgingChart';
 import TicketsParetoChart from '@/components/rm/TicketsParetoChart';
 import TicketHeatmap from '@/components/rm/TicketHeatmap';
+import TicketsManagementTable from '@/components/rm/TicketsManagementTable';
 
 const ChartIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -140,6 +141,9 @@ export default function HelpdeskPage() {
           <TicketAgingChart filters={filters} />
           <TicketsParetoChart filters={filters} />
         </div>
+
+        <LensDivider label="TICKETS · MANAGE" />
+        <TicketsManagementTable filters={filters} />
 
         <LensDivider label="TICKETS · CATEGORY BREAKDOWN" />
         <TicketHeatmap filters={filters} />
