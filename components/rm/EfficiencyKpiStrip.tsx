@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 import type { RMFilters } from './RMFilterBar';
 
 interface KpiData {
-  openTickets: { total: number; urgent: number };
-  mttr:        { days: number | null; priorMonthDays: number | null };
-  slaHit:      { hitPct: number | null; breachCount: number };
-  repeats:     { siteCount: number };
+  openTickets:       { total: number; urgent: number };
+  noActionOpen?:     { value: number; vsLM: number };
+  waitingThirdParty?:{ value: number; vsLM: number };
+  mttr:              { days: number | null; priorMonthDays: number | null };
+  slaHit:            { hitPct: number | null; breachCount: number };
+  repeats:           { siteCount: number };
 }
 
 function Card({ label, value, subLine }: { label: string; value: string; subLine: React.ReactNode }) {
@@ -54,8 +56,8 @@ export default function EfficiencyKpiStrip({ filters }: Props) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-4 gap-2 mb-[10px]">
-        {[0,1,2,3].map(i => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-[10px]">
+        {[0,1,2,3,4].map(i => (
           <div key={i} className="bg-gray-50 rounded-md p-3 animate-pulse" style={{ minHeight: 88 }}>
             <div className="h-2 w-16 bg-gray-200 rounded mb-2" />
             <div className="h-5 w-24 bg-gray-200 rounded mb-2" />
@@ -74,15 +76,33 @@ export default function EfficiencyKpiStrip({ filters }: Props) {
     );
   }
 
+  const noActionValue = data.noActionOpen?.value ?? 0;
+  const waitingValue  = data.waitingThirdParty?.value ?? 0;
+  const noActionVsLM  = data.noActionOpen?.vsLM ?? 0;
+  const waitingVsLM   = data.waitingThirdParty?.vsLM ?? 0;
+
   return (
-    <div className="grid grid-cols-4 gap-2 mb-[10px]">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-[10px]">
       <Card
-        label="Open Tickets"
-        value={data.openTickets.total.toString()}
+        label="No-Action Open"
+        value={noActionValue.toString()}
         subLine={
-          data.openTickets.urgent > 0
-            ? <span className="text-[#b91c1c]">{data.openTickets.urgent} urgent</span>
-            : <span className="text-gray-500">0 urgent</span>
+          noActionVsLM === 0
+            ? <span className="text-gray-500">unchanged vs LM</span>
+            : <span className={noActionVsLM > 0 ? 'text-[#b91c1c]' : 'text-[#15803d]'}>
+                {noActionVsLM > 0 ? '▲' : '▼'} {Math.abs(noActionVsLM)} vs LM
+              </span>
+        }
+      />
+      <Card
+        label="Waiting 3rd Party"
+        value={waitingValue.toString()}
+        subLine={
+          waitingVsLM === 0
+            ? <span className="text-gray-500">unchanged vs LM</span>
+            : <span className={waitingVsLM > 0 ? 'text-[#b91c1c]' : 'text-[#15803d]'}>
+                {waitingVsLM > 0 ? '▲' : '▼'} {Math.abs(waitingVsLM)} vs LM
+              </span>
         }
       />
       <Card

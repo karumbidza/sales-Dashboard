@@ -1,11 +1,15 @@
 'use client';
 
 // components/rm/TicketsManagementTable.tsx
-// Tickets table with per-row exclusion checkbox + "show excluded" toggle.
-// Tick a box → POST to /api/helpdesk/exclusions with a reason picker.
-// Untick → DELETE the exclusion. Excluded tickets disappear from all
-// reports/dashboards because every read endpoint filters via the
-// rm_helpdesk_tickets_active view.
+// Tickets table with per-row exclusion checkbox + Excel-style sort and filter:
+//   • Click any header to sort (asc → desc → unsorted)
+//   • Type in the filter row under each header to substring-match;
+//     Status / Priority use dropdowns populated from the visible data.
+//   • "Show excluded" toggle keeps the existing keep-but-hide list working.
+//
+// Sorting/filtering happens client-side over the full result set
+// (capped at 2000 rows by the server) — fast enough for the typical
+// dataset and avoids round-trips on every keystroke.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RMFilters } from './RMFilterBar';
 
@@ -23,13 +27,66 @@ interface TicketRow {
   excludeReason:  string | null;
 }
 
+type SortKey = 'ticketId' | 'site' | 'subject' | 'status' | 'priority' | 'createdTime' | 'excludeReason';
+type SortDir = 'asc' | 'desc';
+
+interface FilterState {
+  ticketId: string;
+  site:     string;
+  subject:  string;
+  status:   string;
+  priority: string;
+  reason:   string;
+}
+const EMPTY_FILTERS: FilterState = {
+  ticketId: '', site: '', subject: '', status: '', priority: '', reason: '',
+};
+
 const REASON_OPTIONS = ['Sales', 'IT', 'Test', 'Other'] as const;
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+function rowSortValue(r: TicketRow, key: SortKey): string | number {
+  switch (key) {
+    case 'ticketId':     return r.ticketId;
+    case 'site':         return r.siteName ?? r.siteCode ?? '';
+    case 'subject':      return r.subject ?? '';
+    case 'status':       return r.status ?? '';
+    case 'priority':     return r.priority ?? '';
+    case 'createdTime':  return r.createdTime ?? '';
+    case 'excludeReason':return r.excludeReason ?? '';
+  }
+}
+
+interface SortHeaderProps {
+  label: string;
+  sortKey: SortKey;
+  current: { key: SortKey; dir: SortDir } | null;
+  onClick: (k: SortKey) => void;
+  className?: string;
+  align?: 'left' | 'right';
+}
+function SortHeader({ label, sortKey, current, onClick, className = '', align = 'left' }: SortHeaderProps) {
+  const isActive = current?.key === sortKey;
+  const indicator = !isActive ? '↕' : current!.dir === 'asc' ? '↑' : '↓';
+  return (
+    <th
+      onClick={() => onClick(sortKey)}
+      className={`px-2 py-2 text-${align} cursor-pointer select-none hover:bg-gray-100 ${className}`}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <span className={`text-[9px] ${isActive ? 'text-[#1e3a5f]' : 'text-gray-300'}`}>
+          {indicator}
+        </span>
+      </span>
+    </th>
+  );
 }
 
 interface Props { filters: RMFilters }
@@ -45,12 +102,18 @@ export default function TicketsManagementTable({ filters }: Props) {
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Sort + filter state
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(
+    { key: 'createdTime', dir: 'desc' },
+  );
+  const [filterState, setFilterState] = useState<FilterState>(EMPTY_FILTERS);
+
   const fetchRows = useCallback(async () => {
     const qs = new URLSearchParams({
       dateFrom: filters.dateFrom,
       dateTo:   filters.dateTo,
       siteCode: filters.siteCode,
-      limit:    '500',
+      limit:    '2000',
       includeExcluded: showExcluded ? 'true' : 'false',
     }).toString();
     setLoading(true);
@@ -67,10 +130,65 @@ export default function TicketsManagementTable({ filters }: Props) {
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
 
-  const excludedCount = useMemo(
-    () => rows.filter(r => r.isExcluded).length,
+  // Unique values for dropdown filters
+  const uniqueStatuses   = useMemo(
+    () => Array.from(new Set(rows.map(r => r.status).filter(Boolean))).sort(),
     [rows],
   );
+  const uniquePriorities = useMemo(
+    () => Array.from(new Set(rows.map(r => r.priority).filter((v): v is string => !!v))).sort(),
+    [rows],
+  );
+
+  // Apply filters + sort
+  const visibleRows = useMemo(() => {
+    const f = filterState;
+    const filtered = rows.filter(r => {
+      if (f.ticketId && !String(r.ticketId).includes(f.ticketId)) return false;
+      if (f.site) {
+        const hay = `${r.siteCode} ${r.siteName}`.toLowerCase();
+        if (!hay.includes(f.site.toLowerCase())) return false;
+      }
+      if (f.subject && !r.subject.toLowerCase().includes(f.subject.toLowerCase())) return false;
+      if (f.status && r.status !== f.status) return false;
+      if (f.priority && r.priority !== f.priority) return false;
+      if (f.reason) {
+        const hay = (r.excludeReason ?? '').toLowerCase();
+        if (!hay.includes(f.reason.toLowerCase())) return false;
+      }
+      return true;
+    });
+    if (!sort) return filtered;
+    return [...filtered].sort((a, b) => {
+      const av = rowSortValue(a, sort.key);
+      const bv = rowSortValue(b, sort.key);
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv));
+      return sort.dir === 'asc' ? cmp : -cmp;
+    });
+  }, [rows, filterState, sort]);
+
+  const excludedCount = useMemo(() => rows.filter(r => r.isExcluded).length, [rows]);
+  const activeFilterCount = useMemo(
+    () => Object.values(filterState).filter(v => v !== '').length,
+    [filterState],
+  );
+
+  function handleSortClick(key: SortKey) {
+    setSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' };
+      if (prev.dir === 'asc') return { key, dir: 'desc' };
+      return null;
+    });
+  }
+
+  function setFilter<K extends keyof FilterState>(k: K, v: string) {
+    setFilterState(prev => ({ ...prev, [k]: v }));
+  }
+  function clearFilters() {
+    setFilterState(EMPTY_FILTERS);
+  }
 
   async function applyExclude(ticketIds: number[], reason: string) {
     if (ticketIds.length === 0) return;
@@ -87,7 +205,6 @@ export default function TicketsManagementTable({ filters }: Props) {
       setBusy(false);
     }
   }
-
   async function applyUnexclude(ticketIds: number[]) {
     if (ticketIds.length === 0) return;
     setBusy(true);
@@ -109,7 +226,6 @@ export default function TicketsManagementTable({ filters }: Props) {
     setReasonValue('Sales');
     setReasonOther('');
   }
-
   function confirmReasonPicker() {
     const reason = reasonValue === 'Other' ? (reasonOther.trim() || 'Other') : reasonValue;
     if (reasonPickerFor != null) {
@@ -127,10 +243,9 @@ export default function TicketsManagementTable({ filters }: Props) {
     else next.add(ticketId);
     setSelected(next);
   }
-
   function toggleSelectAll() {
-    const visibleIncludable = rows.filter(r => !r.isExcluded).map(r => r.ticketId);
-    if (selected.size === visibleIncludable.length) {
+    const visibleIncludable = visibleRows.filter(r => !r.isExcluded).map(r => r.ticketId);
+    if (visibleIncludable.every(id => selected.has(id)) && visibleIncludable.length > 0) {
       setSelected(new Set());
     } else {
       setSelected(new Set(visibleIncludable));
@@ -146,10 +261,19 @@ export default function TicketsManagementTable({ filters }: Props) {
             Tickets · Manage
           </div>
           <span className="text-[11px] text-gray-500">
-            {rows.length} {showExcluded ? 'total' : 'visible'} · {excludedCount} excluded
+            {visibleRows.length} of {rows.length}{activeFilterCount > 0 ? ' (filtered)' : ''} · {excludedCount} excluded
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {activeFilterCount > 0 && (
+            <button
+              onClick={clearFilters}
+              className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded transition"
+              title="Clear all filters"
+            >
+              Clear filters ({activeFilterCount})
+            </button>
+          )}
           {selected.size > 0 && (
             <button
               onClick={() => setBulkPickerOpen(true)}
@@ -180,32 +304,98 @@ export default function TicketsManagementTable({ filters }: Props) {
                 <input
                   type="checkbox"
                   checked={
-                    rows.filter(r => !r.isExcluded).length > 0 &&
-                    selected.size === rows.filter(r => !r.isExcluded).length
+                    visibleRows.filter(r => !r.isExcluded).length > 0 &&
+                    visibleRows.filter(r => !r.isExcluded).every(r => selected.has(r.ticketId))
                   }
                   onChange={toggleSelectAll}
                   className="h-3.5 w-3.5"
                   aria-label="Select all visible (non-excluded) tickets"
                 />
               </th>
-              <th className="px-2 py-2 text-left">Ticket</th>
-              <th className="px-2 py-2 text-left">Site</th>
-              <th className="px-2 py-2 text-left">Subject</th>
-              <th className="px-2 py-2 text-left">Status</th>
-              <th className="px-2 py-2 text-left">Priority</th>
-              <th className="px-2 py-2 text-left">Created</th>
-              <th className="px-2 py-2 text-left">Exclude</th>
-              <th className="px-2 py-2 text-left">Reason</th>
+              <SortHeader label="Ticket"   sortKey="ticketId"      current={sort} onClick={handleSortClick} />
+              <SortHeader label="Site"     sortKey="site"          current={sort} onClick={handleSortClick} />
+              <SortHeader label="Subject"  sortKey="subject"       current={sort} onClick={handleSortClick} />
+              <SortHeader label="Status"   sortKey="status"        current={sort} onClick={handleSortClick} />
+              <SortHeader label="Priority" sortKey="priority"      current={sort} onClick={handleSortClick} />
+              <SortHeader label="Created"  sortKey="createdTime"   current={sort} onClick={handleSortClick} />
+              <th className="px-2 py-2 text-left w-16">Exclude</th>
+              <SortHeader label="Reason"   sortKey="excludeReason" current={sort} onClick={handleSortClick} />
+            </tr>
+
+            {/* Filter row */}
+            <tr className="bg-gray-50/60 border-t border-gray-200">
+              <th />
+              <th className="px-1 pb-2">
+                <input
+                  type="text"
+                  value={filterState.ticketId}
+                  onChange={e => setFilter('ticketId', e.target.value)}
+                  placeholder="filter…"
+                  className="w-full text-[11px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-[#1e3a5f]"
+                />
+              </th>
+              <th className="px-1 pb-2">
+                <input
+                  type="text"
+                  value={filterState.site}
+                  onChange={e => setFilter('site', e.target.value)}
+                  placeholder="filter…"
+                  className="w-full text-[11px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-[#1e3a5f]"
+                />
+              </th>
+              <th className="px-1 pb-2">
+                <input
+                  type="text"
+                  value={filterState.subject}
+                  onChange={e => setFilter('subject', e.target.value)}
+                  placeholder="filter…"
+                  className="w-full text-[11px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-[#1e3a5f]"
+                />
+              </th>
+              <th className="px-1 pb-2">
+                <select
+                  value={filterState.status}
+                  onChange={e => setFilter('status', e.target.value)}
+                  className="w-full text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:border-[#1e3a5f]"
+                >
+                  <option value="">All</option>
+                  {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </th>
+              <th className="px-1 pb-2">
+                <select
+                  value={filterState.priority}
+                  onChange={e => setFilter('priority', e.target.value)}
+                  className="w-full text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:border-[#1e3a5f]"
+                >
+                  <option value="">All</option>
+                  {uniquePriorities.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </th>
+              <th /> {/* Created — no filter for now */}
+              <th /> {/* Exclude — no filter */}
+              <th className="px-1 pb-2">
+                <input
+                  type="text"
+                  value={filterState.reason}
+                  onChange={e => setFilter('reason', e.target.value)}
+                  placeholder="filter…"
+                  className="w-full text-[11px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-[#1e3a5f]"
+                />
+              </th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400 text-xs">Loading…</td></tr>
             )}
-            {!loading && rows.length === 0 && (
+            {!loading && visibleRows.length === 0 && rows.length === 0 && (
               <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400 text-xs">No tickets in window</td></tr>
             )}
-            {!loading && rows.map(t => {
+            {!loading && visibleRows.length === 0 && rows.length > 0 && (
+              <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400 text-xs">No rows match the active filters</td></tr>
+            )}
+            {!loading && visibleRows.map(t => {
               const isSel = selected.has(t.ticketId);
               return (
                 <tr

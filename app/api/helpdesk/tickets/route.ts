@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     const ticketId    = sp.get('ticketId')    || undefined;
     const openOnly    = sp.get('openOnly') === 'true';
     const includeExcluded = sp.get('includeExcluded') === 'true';
-    const limit       = Math.min(Math.max(1, parseInt(sp.get('limit') || '200')), 500);
+    const limit       = Math.min(Math.max(1, parseInt(sp.get('limit') || '200')), 2000);
 
     const clauses: string[] = ['1=1'];
     // Default behavior: hide excluded tickets. Toggle includeExcluded=true
