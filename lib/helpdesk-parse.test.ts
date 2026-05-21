@@ -76,6 +76,17 @@ test('parseHelpdeskDate: parses M/D/YY date only (no time)', () => {
   assert.equal(parseHelpdeskDate('5/14/26'), '2026-05-14T00:00:00.000Z');
 });
 
+test('parseHelpdeskDate: parses DD/MM/YYYY HH:MM (European locale)', () => {
+  // Disambiguated: 20 can't be a month, so this is DD/MM
+  assert.equal(parseHelpdeskDate('20/5/2026 14:30'), '2026-05-20T14:30:00.000Z');
+  assert.equal(parseHelpdeskDate('14/05/2026 09:15:30'), '2026-05-14T09:15:30.000Z');
+});
+
+test('parseHelpdeskDate: prefers M/D when both interpretations are valid', () => {
+  // Ambiguous "5/3/26": parser default = M/D (Freshdesk default)
+  assert.equal(parseHelpdeskDate('5/3/26 10:00'), '2026-05-03T10:00:00.000Z');
+});
+
 test('parseResolutionMinutes: parses H:MM:SS with large hours', () => {
   // 534h 31m 57s ≈ 32072 minutes (57s rounds to 1m)
   assert.equal(parseResolutionMinutes('534:31:57'), 32072);

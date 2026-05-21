@@ -283,8 +283,12 @@ export default function UploadPanel({ onSuccess }: Props) {
           );
         }
 
+        // raw:true keeps native types — Date objects for date cells (via
+        // cellDates:true above), numbers for Excel serials, strings stay
+        // strings. raw:false would convert dates to locale-formatted
+        // strings (DD/MM/YYYY in ZW), which then trips the M/D parser.
         const rows = XLSX.utils.sheet_to_json<Record<string, any>>(
-          wb.Sheets[helpdeskSheetName], { defval: null, raw: false }
+          wb.Sheets[helpdeskSheetName], { defval: null, raw: true }
         );
 
         const { data } = await postJSON('/api/validate', {

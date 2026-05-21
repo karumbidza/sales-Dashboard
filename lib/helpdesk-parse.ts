@@ -76,13 +76,22 @@ export function parseHelpdeskDate(v: unknown): string | null {
     return isNaN(date.getTime()) ? null : date.toISOString();
   }
 
-  // 4. M/D/YY[YY] H:MM[:SS] — Freshdesk default 24-hour text export
+  // 4. D/M/YY[YY] H:MM[:SS] vs M/D/YY[YY] H:MM[:SS]
+  //    Both share the same regex shape; disambiguate by checking if the
+  //    "first" position exceeds 12 (then it MUST be the day, so DD/MM).
+  //    Otherwise fall back to M/D (Freshdesk default).
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (m) {
-    const [, mo, d, y, h, min, sec] = m;
+    const [, a, b, y, h, min, sec] = m;
+    const aN = parseInt(a, 10);
+    const bN = parseInt(b, 10);
+    // If a > 12, a must be the day → DD/MM. Otherwise default M/D.
+    const isDayFirst = aN > 12 && bN <= 12;
+    const mo = isDayFirst ? bN : aN;
+    const d  = isDayFirst ? aN : bN;
     const yyyy = y.length === 2 ? 2000 + parseInt(y, 10) : parseInt(y, 10);
     const date = new Date(Date.UTC(
-      yyyy, parseInt(mo, 10) - 1, parseInt(d, 10),
+      yyyy, mo - 1, d,
       parseInt(h, 10), parseInt(min, 10), sec ? parseInt(sec, 10) : 0,
     ));
     return isNaN(date.getTime()) ? null : date.toISOString();
