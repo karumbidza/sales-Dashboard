@@ -1,10 +1,24 @@
 'use client';
 
 // components/rm/TicketsManagementTable.tsx
-// Excel-style tickets management: each column header has a tiny ▼ caret
-// that opens a popover with Sort (A-Z / Z-A) + a filter checklist of
-// unique values (with a search box, like Excel's column filter). Plus
-// per-row exclusion checkbox + bulk-exclude.
+// Excel-style tickets management.
+//
+// Workflow:
+//   1. Click a row's Exclude checkbox → marks the row as PENDING (local
+//      state only). Visual: row highlighted yellow + checkbox reflects
+//      the pending future state, not the current server state.
+//   2. Top bar's Reason dropdown + Save button become active.
+//   3. User picks a reason (Sales / IT / Test / Other / custom), clicks
+//      Save → ONE batched POST + ONE batched DELETE; pending excludes
+//      go up, pending un-excludes come down.
+//   4. Optimistic UI: rows update locally before the refetch finishes,
+//      so the table never "blanks out" with a loading state.
+//
+// Re-import safety: rm_helpdesk_exclusions is keyed by Freshdesk
+// ticket_id. Ingest path uses ON CONFLICT (ticket_id) DO UPDATE for
+// tickets but does not touch the exclusions table. So an excluded
+// ticket stays excluded across re-imports; its status/resolution still
+// get refreshed each time.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RMFilters } from './RMFilterBar';
 
@@ -59,11 +73,10 @@ function rowFilterValue(r: TicketRow, key: ColKey): string {
   }
 }
 
-// Columns that get a filter checklist (subject + created are sort-only).
 const FILTERABLE: ColKey[] = ['ticketId', 'site', 'status', 'priority', 'excludeReason'];
 
 // ────────────────────────────────────────────────────────────────────────────
-// Column dropdown popover — sort + checklist filter, like Excel.
+// Column dropdown popover — sort + filter checklist
 // ────────────────────────────────────────────────────────────────────────────
 
 interface DropdownProps {
@@ -92,23 +105,20 @@ function ColumnDropdown({
     return uniqueValues.filter(v => v.toLowerCase().includes(q));
   }, [uniqueValues, search]);
 
-  const allChecked = draft.size === 0 || filteredValues.every(v => draft.has(v));
+  const allChecked  = draft.size === 0 || filteredValues.every(v => draft.has(v));
   const noneChecked = filteredValues.every(v => !draft.has(v));
 
   function toggle(v: string) {
     const next = new Set(draft);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
+    if (next.has(v)) next.delete(v); else next.add(v);
     setDraft(next);
   }
   function toggleAll() {
     if (allChecked) {
-      // Uncheck all visible
       const next = new Set(draft);
       for (const v of filteredValues) next.delete(v);
       setDraft(next);
     } else {
-      // Check all visible
       const next = new Set(draft);
       for (const v of filteredValues) next.add(v);
       setDraft(next);
@@ -122,13 +132,10 @@ function ColumnDropdown({
       onClick={e => e.stopPropagation()}
     >
       <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">
-          {label}
-        </span>
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">{label}</span>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-base leading-none">×</button>
       </div>
 
-      {/* Sort buttons */}
       <div className="px-3 py-2 border-b border-gray-100">
         <div className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 mb-1.5">Sort</div>
         <div className="grid grid-cols-2 gap-1">
@@ -139,9 +146,7 @@ function ColumnDropdown({
                 ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]'
                 : 'bg-white border-gray-200 hover:border-gray-400'
             }`}
-          >
-            ↑ Ascending
-          </button>
+          >↑ Ascending</button>
           <button
             onClick={() => onSort('desc')}
             className={`text-xs px-2 py-1 rounded border transition ${
@@ -149,13 +154,10 @@ function ColumnDropdown({
                 ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]'
                 : 'bg-white border-gray-200 hover:border-gray-400'
             }`}
-          >
-            ↓ Descending
-          </button>
+          >↓ Descending</button>
         </div>
       </div>
 
-      {/* Filter checklist */}
       {filterable && (
         <>
           <div className="px-3 py-2">
@@ -199,22 +201,16 @@ function ColumnDropdown({
             <button
               onClick={() => { setDraft(new Set()); onClear(); onClose(); }}
               className="text-xs text-gray-600 hover:text-gray-900"
-            >
-              Clear filter
-            </button>
+            >Clear filter</button>
             <div className="flex items-center gap-2">
               <button
                 onClick={onClose}
                 className="text-xs text-gray-600 hover:text-gray-900 px-2 py-1"
-              >
-                Cancel
-              </button>
+              >Cancel</button>
               <button
                 onClick={() => { onApply(draft); onClose(); }}
                 className="text-xs font-medium text-white bg-[#1e3a5f] hover:bg-[#16304f] px-3 py-1 rounded transition"
-              >
-                Apply
-              </button>
+              >Apply</button>
             </div>
           </div>
         </>
@@ -224,7 +220,7 @@ function ColumnDropdown({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Column header — label + sort arrow + ▼ dropdown caret.
+// Column header — label + sort arrow + ▼ caret
 // ────────────────────────────────────────────────────────────────────────────
 
 interface HeaderProps {
@@ -235,14 +231,12 @@ interface HeaderProps {
   openColumn: ColKey | null;
   onOpenChange: (col: ColKey | null) => void;
   filterable: boolean;
-  className?: string;
-  align?: 'left' | 'right';
-  // Popover props
   uniqueValues: string[];
   selected: Set<string>;
   onSort: (dir: SortDir) => void;
   onApply: (s: Set<string>) => void;
   onClear: () => void;
+  align?: 'left' | 'right';
 }
 
 function ColumnHeader(props: HeaderProps) {
@@ -297,26 +291,24 @@ export default function TicketsManagementTable({ filters }: Props) {
   const [loading, setLoading] = useState(true);
   const [showExcluded, setShowExcluded] = useState(false);
 
-  const [reasonPickerFor, setReasonPickerFor] = useState<number | null>(null);
+  // PENDING CHANGES — local-only until the user clicks Save.
+  const [pendingExclude,   setPendingExclude]   = useState<Set<number>>(new Set());
+  const [pendingUnexclude, setPendingUnexclude] = useState<Set<number>>(new Set());
+
+  // Reason picker for the pending excludes
   const [reasonValue, setReasonValue] = useState<string>('Sales');
   const [reasonOther, setReasonOther] = useState<string>('');
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
 
-  // Sort + per-column filter state.
-  // Filter is a Set of allowed values per column; empty set = no filter.
+  const [saving, setSaving] = useState(false);
+
+  // Sort + filter state (unchanged from previous version)
   const [sort, setSort] = useState<{ key: ColKey; dir: SortDir } | null>(
     { key: 'createdTime', dir: 'desc' },
   );
   const [filterSets, setFilterSets] = useState<Record<ColKey, Set<string>>>({
-    ticketId: new Set(),
-    site: new Set(),
-    subject: new Set(),
-    status: new Set(),
-    priority: new Set(),
-    createdTime: new Set(),
-    excludeReason: new Set(),
+    ticketId: new Set(), site: new Set(), subject: new Set(),
+    status: new Set(), priority: new Set(),
+    createdTime: new Set(), excludeReason: new Set(),
   });
   const [openColumn, setOpenColumn] = useState<ColKey | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -333,7 +325,7 @@ export default function TicketsManagementTable({ filters }: Props) {
     return () => document.removeEventListener('mousedown', handler);
   }, [openColumn]);
 
-  const fetchRows = useCallback(async () => {
+  const fetchRows = useCallback(async (showSpinner = true) => {
     const qs = new URLSearchParams({
       dateFrom: filters.dateFrom,
       dateTo:   filters.dateTo,
@@ -341,7 +333,7 @@ export default function TicketsManagementTable({ filters }: Props) {
       limit:    '2000',
       includeExcluded: showExcluded ? 'true' : 'false',
     }).toString();
-    setLoading(true);
+    if (showSpinner) setLoading(true);
     try {
       const r = await fetch(`/api/helpdesk/tickets?${qs}`);
       const j = await r.json();
@@ -349,13 +341,95 @@ export default function TicketsManagementTable({ filters }: Props) {
     } catch {
       setRows([]);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [filters, showExcluded]);
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
 
-  // Unique values per column for the dropdown checklists.
+  // ── Pending state helpers ──────────────────────────────────────────
+  const totalPending = pendingExclude.size + pendingUnexclude.size;
+  const hasExcludesPending = pendingExclude.size > 0;
+
+  function effectiveExcluded(t: TicketRow): boolean {
+    // Visual state = server state XOR pending toggle
+    if (t.isExcluded) return !pendingUnexclude.has(t.ticketId);
+    return pendingExclude.has(t.ticketId);
+  }
+
+  function rowIsPending(t: TicketRow): boolean {
+    return pendingExclude.has(t.ticketId) || pendingUnexclude.has(t.ticketId);
+  }
+
+  function toggleExclude(t: TicketRow) {
+    if (t.isExcluded) {
+      setPendingUnexclude(prev => {
+        const next = new Set(prev);
+        if (next.has(t.ticketId)) next.delete(t.ticketId);
+        else next.add(t.ticketId);
+        return next;
+      });
+    } else {
+      setPendingExclude(prev => {
+        const next = new Set(prev);
+        if (next.has(t.ticketId)) next.delete(t.ticketId);
+        else next.add(t.ticketId);
+        return next;
+      });
+    }
+  }
+
+  function discardPending() {
+    setPendingExclude(new Set());
+    setPendingUnexclude(new Set());
+  }
+
+  async function savePending() {
+    if (totalPending === 0) return;
+    setSaving(true);
+    try {
+      const reason = reasonValue === 'Other' ? (reasonOther.trim() || 'Other') : reasonValue;
+      const promises: Promise<any>[] = [];
+      if (pendingExclude.size > 0) {
+        promises.push(fetch('/api/helpdesk/exclusions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ticketIds: Array.from(pendingExclude), reason }),
+        }));
+      }
+      if (pendingUnexclude.size > 0) {
+        promises.push(fetch('/api/helpdesk/exclusions', {
+          method: 'DELETE',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ticketIds: Array.from(pendingUnexclude) }),
+        }));
+      }
+
+      // Optimistic update — flip the affected rows immediately so the
+      // table doesn't blink while the refetch is in flight.
+      setRows(prev => prev.map(r => {
+        if (pendingExclude.has(r.ticketId)) {
+          return { ...r, isExcluded: true, excludeReason: reason };
+        }
+        if (pendingUnexclude.has(r.ticketId)) {
+          return { ...r, isExcluded: false, excludeReason: null };
+        }
+        return r;
+      }));
+
+      // Clear pending immediately — server confirmation will come via refetch.
+      setPendingExclude(new Set());
+      setPendingUnexclude(new Set());
+
+      await Promise.all(promises);
+      // Quiet refetch (no spinner) to reconcile with server truth.
+      fetchRows(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Unique values for filter checklists ────────────────────────────
   function uniqueFor(key: ColKey): string[] {
     const set = new Set<string>();
     for (const r of rows) set.add(rowFilterValue(r, key));
@@ -374,7 +448,7 @@ export default function TicketsManagementTable({ filters }: Props) {
     [rows], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // Apply filters + sort
+  // ── Apply filters + sort ───────────────────────────────────────────
   const visibleRows = useMemo(() => {
     const filtered = rows.filter(r => {
       for (const key of FILTERABLE) {
@@ -418,73 +492,10 @@ export default function TicketsManagementTable({ filters }: Props) {
     });
   }
 
-  // Exclusion logic
-  async function applyExclude(ticketIds: number[], reason: string) {
-    if (ticketIds.length === 0) return;
-    setBusy(true);
-    try {
-      await fetch('/api/helpdesk/exclusions', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ticketIds, reason }),
-      });
-      await fetchRows();
-      setSelected(new Set());
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function applyUnexclude(ticketIds: number[]) {
-    if (ticketIds.length === 0) return;
-    setBusy(true);
-    try {
-      await fetch('/api/helpdesk/exclusions', {
-        method: 'DELETE',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ticketIds }),
-      });
-      await fetchRows();
-      setSelected(new Set());
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function openReasonPickerFor(ticketId: number) {
-    setReasonPickerFor(ticketId);
-    setReasonValue('Sales');
-    setReasonOther('');
-  }
-  function confirmReasonPicker() {
-    const reason = reasonValue === 'Other' ? (reasonOther.trim() || 'Other') : reasonValue;
-    if (reasonPickerFor != null) {
-      applyExclude([reasonPickerFor], reason);
-      setReasonPickerFor(null);
-    } else if (bulkPickerOpen) {
-      applyExclude(Array.from(selected), reason);
-      setBulkPickerOpen(false);
-    }
-  }
-
-  function toggleSelection(ticketId: number) {
-    const next = new Set(selected);
-    if (next.has(ticketId)) next.delete(ticketId);
-    else next.add(ticketId);
-    setSelected(next);
-  }
-  function toggleSelectAll() {
-    const visibleIncludable = visibleRows.filter(r => !r.isExcluded).map(r => r.ticketId);
-    if (visibleIncludable.every(id => selected.has(id)) && visibleIncludable.length > 0) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(visibleIncludable));
-    }
-  }
-
   return (
     <div className="bg-white border border-gray-200 rounded-md" ref={containerRef}>
-      {/* Header strip */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200">
+      {/* Header strip — info + pending action bar + sort/filter clear + show-excluded */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="text-[10px] uppercase font-semibold tracking-[0.6px] text-gray-500">
             Tickets · Manage
@@ -493,25 +504,70 @@ export default function TicketsManagementTable({ filters }: Props) {
             {visibleRows.length} of {rows.length}{activeFilterCount > 0 ? ' (filtered)' : ''} · {excludedCount} excluded
           </span>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Reason picker (only relevant if there are pending excludes) */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">Reason</label>
+            <select
+              value={reasonValue}
+              onChange={e => setReasonValue(e.target.value)}
+              disabled={!hasExcludesPending || saving}
+              className="text-xs border border-gray-200 rounded px-2 py-1 bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-[#1e3a5f]"
+            >
+              {REASON_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            {reasonValue === 'Other' && hasExcludesPending && (
+              <input
+                type="text"
+                value={reasonOther}
+                onChange={e => setReasonOther(e.target.value)}
+                placeholder="Custom…"
+                disabled={saving}
+                className="text-xs border border-gray-200 rounded px-2 py-1 w-32 focus:outline-none focus:border-[#1e3a5f] disabled:bg-gray-50"
+              />
+            )}
+          </div>
+
+          {/* Discard pending */}
+          {totalPending > 0 && (
+            <button
+              onClick={discardPending}
+              disabled={saving}
+              className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded transition"
+            >
+              Discard
+            </button>
+          )}
+
+          {/* Save */}
+          <button
+            onClick={savePending}
+            disabled={totalPending === 0 || saving}
+            className={`text-xs font-medium px-3 py-1.5 rounded-md transition ${
+              totalPending > 0
+                ? 'text-white bg-[#1e3a5f] hover:bg-[#16304f]'
+                : 'text-gray-400 bg-gray-100 cursor-not-allowed'
+            } disabled:opacity-60`}
+            title={
+              totalPending === 0
+                ? 'No pending changes'
+                : `Save ${pendingExclude.size} excludes${pendingUnexclude.size > 0 ? ` + ${pendingUnexclude.size} un-excludes` : ''}`
+            }
+          >
+            {saving ? 'Saving…' : `Save${totalPending > 0 ? ` (${totalPending})` : ''}`}
+          </button>
+
           {activeFilterCount > 0 && (
             <button
               onClick={clearAllFilters}
               className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded transition"
-              title="Clear all filters"
+              title="Clear all column filters"
             >
               Clear filters ({activeFilterCount})
             </button>
           )}
-          {selected.size > 0 && (
-            <button
-              onClick={() => setBulkPickerOpen(true)}
-              disabled={busy}
-              className="text-xs font-medium text-white bg-[#1e3a5f] hover:bg-[#16304f] px-3 py-1.5 rounded-md transition disabled:opacity-50"
-            >
-              Exclude {selected.size} selected
-            </button>
-          )}
+
           <label className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -529,18 +585,6 @@ export default function TicketsManagementTable({ filters }: Props) {
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="bg-gray-50 text-gray-500 uppercase text-[10px] tracking-wider">
-              <th className="px-2 py-2 text-left w-8">
-                <input
-                  type="checkbox"
-                  checked={
-                    visibleRows.filter(r => !r.isExcluded).length > 0 &&
-                    visibleRows.filter(r => !r.isExcluded).every(r => selected.has(r.ticketId))
-                  }
-                  onChange={toggleSelectAll}
-                  className="h-3.5 w-3.5"
-                  aria-label="Select all visible (non-excluded) tickets"
-                />
-              </th>
               <ColumnHeader
                 colKey="ticketId" label="Ticket"
                 sort={sort} hasFilter={filterSets.ticketId.size > 0}
@@ -561,7 +605,6 @@ export default function TicketsManagementTable({ filters }: Props) {
                 onApply={s => setColumnFilter('site', s)}
                 onClear={() => clearColumnFilter('site')}
               />
-              {/* Subject — sort only, no filter (free-text column) */}
               <ColumnHeader
                 colKey="subject" label="Subject"
                 sort={sort} hasFilter={false}
@@ -592,7 +635,6 @@ export default function TicketsManagementTable({ filters }: Props) {
                 onApply={s => setColumnFilter('priority', s)}
                 onClear={() => clearColumnFilter('priority')}
               />
-              {/* Created — sort only */}
               <ColumnHeader
                 colKey="createdTime" label="Created"
                 sort={sort} hasFilter={false}
@@ -618,31 +660,24 @@ export default function TicketsManagementTable({ filters }: Props) {
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400 text-xs">Loading…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 text-xs">Loading…</td></tr>
             )}
             {!loading && visibleRows.length === 0 && rows.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400 text-xs">No tickets in window</td></tr>
+              <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 text-xs">No tickets in window</td></tr>
             )}
             {!loading && visibleRows.length === 0 && rows.length > 0 && (
-              <tr><td colSpan={9} className="px-3 py-4 text-center text-gray-400 text-xs">No rows match the active filters</td></tr>
+              <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 text-xs">No rows match the active filters</td></tr>
             )}
             {!loading && visibleRows.map(t => {
-              const isSel = selected.has(t.ticketId);
+              const eff = effectiveExcluded(t);
+              const pending = rowIsPending(t);
+              const rowCls = pending
+                ? 'bg-amber-50/80'
+                : eff
+                  ? 'bg-gray-50 text-gray-400 italic'
+                  : 'hover:bg-blue-50/40';
               return (
-                <tr
-                  key={t.ticketId}
-                  className={`border-t border-gray-100 ${t.isExcluded ? 'bg-gray-50 text-gray-400 italic' : 'hover:bg-blue-50/40'}`}
-                >
-                  <td className="px-2 py-1.5">
-                    <input
-                      type="checkbox"
-                      checked={isSel}
-                      onChange={() => toggleSelection(t.ticketId)}
-                      disabled={t.isExcluded}
-                      className="h-3.5 w-3.5"
-                      aria-label={`Select ticket ${t.ticketId}`}
-                    />
-                  </td>
+                <tr key={t.ticketId} className={`border-t border-gray-100 ${rowCls}`}>
                   <td className="px-2 py-1.5 font-mono text-[11px]">#{t.ticketId}</td>
                   <td className="px-2 py-1.5">
                     <div className="font-medium">{t.siteName}</div>
@@ -655,15 +690,18 @@ export default function TicketsManagementTable({ filters }: Props) {
                   <td className="px-2 py-1.5">
                     <input
                       type="checkbox"
-                      checked={t.isExcluded}
-                      disabled={busy}
-                      onChange={() => {
-                        if (t.isExcluded) applyUnexclude([t.ticketId]);
-                        else openReasonPickerFor(t.ticketId);
-                      }}
+                      checked={eff}
+                      onChange={() => toggleExclude(t)}
+                      disabled={saving}
                       className="h-3.5 w-3.5"
-                      aria-label={t.isExcluded ? `Re-include ticket ${t.ticketId}` : `Exclude ticket ${t.ticketId}`}
-                      title={t.isExcluded ? 'Un-exclude (bring back)' : 'Mark as junk / non-R&M'}
+                      aria-label={eff ? `Mark to un-exclude ticket ${t.ticketId}` : `Mark to exclude ticket ${t.ticketId}`}
+                      title={
+                        pending
+                          ? (t.isExcluded
+                              ? 'Pending un-exclude — click Save to commit'
+                              : 'Pending exclude — click Save to commit')
+                          : (t.isExcluded ? 'Currently excluded' : 'Mark as junk / non-R&M')
+                      }
                     />
                   </td>
                   <td className="px-2 py-1.5 text-[11px]">{t.excludeReason ?? ''}</td>
@@ -673,73 +711,6 @@ export default function TicketsManagementTable({ filters }: Props) {
           </tbody>
         </table>
       </div>
-
-      {/* Reason picker modal — single or bulk */}
-      {(reasonPickerFor != null || bulkPickerOpen) && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => { setReasonPickerFor(null); setBulkPickerOpen(false); }}
-        >
-          <div
-            className="bg-white rounded-lg shadow-2xl w-full max-w-sm mx-4 flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b border-gray-200">
-              <div className="text-sm font-semibold text-gray-900">
-                {bulkPickerOpen ? `Exclude ${selected.size} tickets` : `Exclude ticket #${reasonPickerFor}`}
-              </div>
-              <div className="text-[11px] text-gray-500 mt-0.5">
-                These tickets will be hidden from all reports until you re-include them.
-              </div>
-            </div>
-            <div className="p-4 flex flex-col gap-2">
-              <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">Reason</div>
-              <div className="flex flex-wrap gap-2">
-                {REASON_OPTIONS.map(r => (
-                  <button
-                    key={r}
-                    onClick={() => setReasonValue(r)}
-                    className={`text-xs px-3 py-1.5 rounded-md border transition ${
-                      reasonValue === r
-                        ? 'bg-[#1e3a5f] text-white border-[#1e3a5f]'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-              {reasonValue === 'Other' && (
-                <input
-                  type="text"
-                  autoFocus
-                  value={reasonOther}
-                  onChange={e => setReasonOther(e.target.value)}
-                  placeholder="Custom reason (e.g. 'duplicate', 'cancelled')"
-                  className="mt-1 w-full text-sm border border-gray-300 rounded p-2 focus:outline-none focus:border-[#1e3a5f]"
-                />
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-gray-200">
-              <button
-                onClick={() => { setReasonPickerFor(null); setBulkPickerOpen(false); }}
-                className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-md transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmReasonPicker}
-                disabled={busy}
-                className="text-xs font-medium text-white bg-[#b91c1c] hover:bg-[#991b1b] px-3 py-1.5 rounded-md transition disabled:opacity-50"
-              >
-                {busy ? 'Saving…' : 'Exclude'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
