@@ -410,13 +410,13 @@ export default function TicketsManagementTable({ filters }: Props) {
       });
 
       const promises: Promise<any>[] = [];
-      for (const [reason, ticketIds] of byReason) {
+      Array.from(byReason.entries()).forEach(([reason, ticketIds]) => {
         promises.push(fetch('/api/helpdesk/exclusions', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ ticketIds, reason }),
         }));
-      }
+      });
       if (pendingUnexclude.size > 0) {
         promises.push(fetch('/api/helpdesk/exclusions', {
           method: 'DELETE',
