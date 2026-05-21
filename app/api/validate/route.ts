@@ -544,9 +544,27 @@ async function validateHelpdesk(req: NextRequest): Promise<NextResponse> {
     } else {
       const ratio = rows.length > 0 ? totalSkipped / rows.length : 0;
       const status: Check['status'] = ratio >= 0.05 ? 'error' : 'warning';
+      // For each skip reason, surface a single concrete example value so
+      // it's obvious what shape the bad data has (e.g. an unexpected
+      // date format). Maps reason → which column to sample.
+      const SAMPLE_COL: Record<HelpdeskParseReason, string> = {
+        missing_ticket_id: 'Ticket ID',
+        missing_site_code: 'SITE CODE',
+        missing_subject:   'Subject',
+        bad_created_time:  'Created time',
+      };
       const breakdown = Object.entries(skipsByReason)
         .sort((a, b) => b[1] - a[1])
-        .map(([k, n]) => `${n} ${HELPDESK_SKIP_LABEL[k as HelpdeskParseReason] || k}`)
+        .map(([k, n]) => {
+          const label = HELPDESK_SKIP_LABEL[k as HelpdeskParseReason] || k;
+          const col = SAMPLE_COL[k as HelpdeskParseReason];
+          const firstSkipped = skipped.find(s => s.reason === k);
+          const rawValue = col && firstSkipped ? firstSkipped.raw[col] : undefined;
+          const sample = rawValue != null && rawValue !== ''
+            ? ` (e.g. ${JSON.stringify(rawValue)})`
+            : '';
+          return `${n} ${label}${sample}`;
+        })
         .join('; ');
       addCheck('parseable', SHEET, 'Rows parseable for ingest', status,
         `${totalSkipped} of ${rows.length} row(s) will be skipped: ${breakdown}`);

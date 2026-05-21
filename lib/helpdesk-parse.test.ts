@@ -48,6 +48,34 @@ test('parseHelpdeskDate: accepts native Date object', () => {
   assert.equal(parseHelpdeskDate(d), '2026-05-14T12:00:00.000Z');
 });
 
+test('parseHelpdeskDate: parses Excel serial number', () => {
+  // Excel: =DATEVALUE("5/20/2025") = 45797
+  assert.equal(parseHelpdeskDate(45797), '2025-05-20T00:00:00.000Z');
+});
+
+test('parseHelpdeskDate: parses ISO with space separator', () => {
+  assert.equal(parseHelpdeskDate('2026-05-14 12:00:00'), '2026-05-14T12:00:00.000Z');
+});
+
+test('parseHelpdeskDate: parses ISO with T separator', () => {
+  assert.equal(parseHelpdeskDate('2026-05-14T12:00:00'), '2026-05-14T12:00:00.000Z');
+});
+
+test('parseHelpdeskDate: parses ISO with milliseconds + Z', () => {
+  assert.equal(parseHelpdeskDate('2026-05-14T12:00:00.000Z'), '2026-05-14T12:00:00.000Z');
+});
+
+test('parseHelpdeskDate: parses M/D/YY with AM/PM 12-hour time', () => {
+  assert.equal(parseHelpdeskDate('5/14/26 2:30 PM'), '2026-05-14T14:30:00.000Z');
+  assert.equal(parseHelpdeskDate('5/14/26 2:30 AM'), '2026-05-14T02:30:00.000Z');
+  assert.equal(parseHelpdeskDate('5/14/26 12:00 PM'), '2026-05-14T12:00:00.000Z');  // noon
+  assert.equal(parseHelpdeskDate('5/14/26 12:00 AM'), '2026-05-14T00:00:00.000Z');  // midnight
+});
+
+test('parseHelpdeskDate: parses M/D/YY date only (no time)', () => {
+  assert.equal(parseHelpdeskDate('5/14/26'), '2026-05-14T00:00:00.000Z');
+});
+
 test('parseResolutionMinutes: parses H:MM:SS with large hours', () => {
   // 534h 31m 57s ≈ 32072 minutes (57s rounds to 1m)
   assert.equal(parseResolutionMinutes('534:31:57'), 32072);
