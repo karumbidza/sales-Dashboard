@@ -19,7 +19,10 @@ function readFilters(req: NextRequest): F {
 }
 
 function whereClause(f: F, includeCategory: boolean) {
-  const clauses: string[] = ['1=1'];
+  const clauses: string[] = [
+    '1=1',
+    `NOT EXISTS (SELECT 1 FROM rm_helpdesk_exclusions x WHERE x.ticket_id = t.ticket_id)`,
+  ];
   const params: any[] = [];
   let p = 1;
   if (f.dateFrom) { clauses.push(`t.created_time::DATE >= $${p++}`); params.push(f.dateFrom); }

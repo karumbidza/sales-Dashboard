@@ -12,7 +12,10 @@ export async function GET(req: NextRequest) {
     const category = sp.get('category') || undefined;
     const limit    = Math.min(Math.max(1, parseInt(sp.get('limit') || '200')), 500);
 
-    const clauses: string[] = [`t.status NOT IN ('Closed', 'Resolved')`];
+    const clauses: string[] = [
+      `t.status NOT IN ('Closed', 'Resolved')`,
+      `NOT EXISTS (SELECT 1 FROM rm_helpdesk_exclusions x WHERE x.ticket_id = t.ticket_id)`,
+    ];
     const params: any[] = [];
     let p = 1;
     if (priority) { clauses.push(`t.priority = $${p++}`); params.push(priority); }

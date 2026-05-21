@@ -12,7 +12,10 @@ export async function GET(req: NextRequest) {
     const priority = sp.get('priority') || undefined;
     const category = sp.get('category') || undefined;
 
-    const clauses: string[] = ['1=1'];
+    const clauses: string[] = [
+      '1=1',
+      `NOT EXISTS (SELECT 1 FROM rm_helpdesk_exclusions x WHERE x.ticket_id = t.ticket_id)`,
+    ];
     const params: any[] = [];
     let p = 1;
     if (dateFrom) { clauses.push(`t.created_time::DATE >= $${p++}`); params.push(dateFrom); }

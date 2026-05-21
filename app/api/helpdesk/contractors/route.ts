@@ -11,7 +11,11 @@ export async function GET(req: NextRequest) {
     const dateTo   = sp.get('dateTo')   || undefined;
     const siteCode = sp.get('siteCode') || undefined;
 
-    const clauses: string[] = [`t.service_provider IS NOT NULL`, `t.service_provider <> ''`];
+    const clauses: string[] = [
+      `t.service_provider IS NOT NULL`,
+      `t.service_provider <> ''`,
+      `NOT EXISTS (SELECT 1 FROM rm_helpdesk_exclusions x WHERE x.ticket_id = t.ticket_id)`,
+    ];
     const params: any[] = [];
     let p = 1;
     if (dateFrom) { clauses.push(`t.created_time::DATE >= $${p++}`); params.push(dateFrom); }

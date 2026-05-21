@@ -17,9 +17,15 @@ export async function GET(req: NextRequest) {
     const description = sp.get('description') || undefined;
     const ticketId    = sp.get('ticketId')    || undefined;
     const openOnly    = sp.get('openOnly') === 'true';
+    const includeExcluded = sp.get('includeExcluded') === 'true';
     const limit       = Math.min(Math.max(1, parseInt(sp.get('limit') || '200')), 500);
 
     const clauses: string[] = ['1=1'];
+    // Default behavior: hide excluded tickets. Toggle includeExcluded=true
+    // for the "Show excluded" view so users can un-check them.
+    if (!includeExcluded) {
+      clauses.push(`NOT EXISTS (SELECT 1 FROM rm_helpdesk_exclusions x WHERE x.ticket_id = t.ticket_id)`);
+    }
     const params: any[] = [];
     let p = 1;
     if (dateFrom)    { clauses.push(`t.created_time::DATE >= $${p++}`); params.push(dateFrom); }
@@ -47,11 +53,14 @@ export async function GET(req: NextRequest) {
               t.resolution_minutes, t.resolution_status,
               c.slug AS category_slug, c.display_name AS category_name,
               r.source AS category_source, r.needs_review,
-              t.description_norm
+              t.description_norm,
+              x.ticket_id IS NOT NULL AS is_excluded,
+              x.reason                AS exclude_reason
          FROM rm_helpdesk_tickets t
          JOIN sites s ON t.site_code = s.site_code
          LEFT JOIN rm_description_categories r ON t.description_norm = r.description_norm
          LEFT JOIN rm_categories c ON r.category_id = c.id
+         LEFT JOIN rm_helpdesk_exclusions x ON x.ticket_id = t.ticket_id
         WHERE ${clauses.join(' AND ')}
         ORDER BY t.created_time DESC
         LIMIT $${p}`,
@@ -78,6 +87,8 @@ export async function GET(req: NextRequest) {
         categoryName:       r.category_name,
         categorySource:     r.category_source,
         needsReview:        r.needs_review,
+        isExcluded:         r.is_excluded,
+        excludeReason:      r.exclude_reason,
       })),
     });
   } catch (err: any) {

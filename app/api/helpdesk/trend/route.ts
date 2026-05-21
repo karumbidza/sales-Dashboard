@@ -15,7 +15,10 @@ export async function GET(req: NextRequest) {
     const siteCode = sp.get('siteCode') || undefined;
     const granularity = sp.get('granularity') === 'daily' ? 'daily' : 'monthly';
 
-    const clauses: string[] = ['1=1'];
+    const clauses: string[] = [
+      '1=1',
+      `NOT EXISTS (SELECT 1 FROM rm_helpdesk_exclusions x WHERE x.ticket_id = t.ticket_id)`,
+    ];
     const params: any[] = [];
     let p = 1;
     if (dateFrom) { clauses.push(`t.created_time::DATE >= $${p++}`); params.push(dateFrom); }

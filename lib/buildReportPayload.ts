@@ -288,7 +288,7 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
             s.budget_name AS site_name,
             COUNT(*) FILTER (WHERE resolution_status='SLA Violated')::INT AS breaches,
             COUNT(*) FILTER (WHERE resolution_status IS NOT NULL)::INT    AS total
-       FROM rm_helpdesk_tickets tk
+       FROM rm_helpdesk_tickets_active tk
        JOIN sites s ON tk.site_code = s.site_code
        LEFT JOIN territories t ON s.territory_id = t.id
       WHERE tk.created_time::DATE >= $1::DATE
@@ -307,7 +307,7 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     `SELECT tk.site_code,
             s.budget_name AS site_name,
             AVG(resolution_minutes)::NUMERIC AS avg_min
-       FROM rm_helpdesk_tickets tk
+       FROM rm_helpdesk_tickets_active tk
        JOIN sites s ON tk.site_code = s.site_code
        LEFT JOIN territories t ON s.territory_id = t.id
       WHERE tk.resolved_time IS NOT NULL
@@ -328,7 +328,7 @@ export async function buildReportPayload(filters: ReportFilters): Promise<Report
     `SELECT tk.site_code,
             s.budget_name AS site_name,
             COUNT(*)::INT AS tickets
-       FROM rm_helpdesk_tickets tk
+       FROM rm_helpdesk_tickets_active tk
        JOIN sites s ON tk.site_code = s.site_code
        LEFT JOIN territories t ON s.territory_id = t.id
       WHERE tk.created_time::DATE >= $1::DATE

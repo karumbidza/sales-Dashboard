@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     const [openRow] = await query<{ total: string; urgent: string }>(
       `SELECT COUNT(*)::INT AS total,
               COUNT(*) FILTER (WHERE priority = 'Urgent')::INT AS urgent
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     const [openedRow] = await query<{ opened: string; avg_min: string | null }>(
       `SELECT COUNT(*)::INT AS opened,
               AVG(resolution_minutes)::NUMERIC AS avg_min
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     // 1c. Tickets opened in prior month (same calendar window length, shifted -1 month)
     const [openedPriorRow] = await query<{ avg_min: string | null }>(
       `SELECT AVG(resolution_minutes)::NUMERIC AS avg_min
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
     // 1d. Top 3 ticket-contributing sites in current period
     const ticketContribRows = await query<{ site_name: string; count: number }>(
       `SELECT s.budget_name AS site_name, COUNT(*)::INT AS count
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
     // 1e. No-action open (status Open/Pending) — open AS OF dateTo
     const [noActionRow] = await query<{ total: string }>(
       `SELECT COUNT(*)::INT AS total
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
     // 1f. Same query, but anchored to one month prior — used for vsLM
     const [noActionPriorRow] = await query<{ total: string }>(
       `SELECT COUNT(*)::INT AS total
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
     // 1g. Waiting on Third Party — open AS OF dateTo
     const [waitingRow] = await query<{ total: string }>(
       `SELECT COUNT(*)::INT AS total
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -175,7 +175,7 @@ export async function GET(req: NextRequest) {
 
     const [waitingPriorRow] = await query<{ total: string }>(
       `SELECT COUNT(*)::INT AS total
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -195,7 +195,7 @@ export async function GET(req: NextRequest) {
       `SELECT s.budget_name AS site_name,
               COUNT(*)::INT AS open_count,
               COUNT(*) FILTER (WHERE tk.created_time < $1::timestamptz - INTERVAL '30 days')::INT AS stale_count
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -215,7 +215,7 @@ export async function GET(req: NextRequest) {
     // 2. MTTR (current period) — based on resolved_time in window
     const [mttrCurrRow] = await query<{ avg_min: string | null }>(
       `SELECT AVG(resolution_minutes)::NUMERIC AS avg_min
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -233,7 +233,7 @@ export async function GET(req: NextRequest) {
     // MTTR prior month (full prior month, not same-days for simplicity)
     const [mttrPriorRow] = await query<{ avg_min: string | null }>(
       `SELECT AVG(resolution_minutes)::NUMERIC AS avg_min
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -258,7 +258,7 @@ export async function GET(req: NextRequest) {
       `SELECT COUNT(*) FILTER (WHERE resolution_status='Within SLA')::INT AS hits,
               COUNT(*) FILTER (WHERE resolution_status IS NOT NULL)::INT AS total,
               COUNT(*) FILTER (WHERE resolution_status='SLA Violated')::INT AS breaches
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -281,7 +281,7 @@ export async function GET(req: NextRequest) {
       `SELECT COUNT(DISTINCT site_code)::INT AS site_count
          FROM (
            SELECT tk.site_code, tk.description_norm, COUNT(*)::INT AS n
-             FROM rm_helpdesk_tickets tk
+             FROM rm_helpdesk_tickets_active tk
              JOIN sites s ON tk.site_code = s.site_code
              LEFT JOIN territories t ON s.territory_id = t.id
              LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
