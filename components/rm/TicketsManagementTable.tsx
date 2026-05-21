@@ -4,15 +4,15 @@
 // Excel-style tickets management.
 //
 // Workflow:
-//   1. Click a row's Exclude checkbox → marks the row as PENDING (local
-//      state only). Visual: row highlighted yellow + checkbox reflects
-//      the pending future state, not the current server state.
-//   2. Top bar's Reason dropdown + Save button become active.
-//   3. User picks a reason (Sales / IT / Test / Other / custom), clicks
-//      Save → ONE batched POST + ONE batched DELETE; pending excludes
-//      go up, pending un-excludes come down.
-//   4. Optimistic UI: rows update locally before the refetch finishes,
-//      so the table never "blanks out" with a loading state.
+//   1. Tick a row's Exclude checkbox → that row's REASON cell becomes
+//      an inline dropdown (default = last-used reason). Row turns
+//      yellow (pending).
+//   2. Optionally change the per-row reason. If "Other", a small inline
+//      text field appears next to the dropdown.
+//   3. Tab through rows ticking + adjusting reasons.
+//   4. Click Save → ONE POST per distinct reason (server endpoint takes
+//      one reason per call) + ONE DELETE for any pending un-excludes.
+//      Optimistic local update; no spinner, no flicker.
 //
 // Re-import safety: rm_helpdesk_exclusions is keyed by Freshdesk
 // ticket_id. Ingest path uses ON CONFLICT (ticket_id) DO UPDATE for
@@ -41,6 +41,7 @@ type ColKey =
 type SortDir = 'asc' | 'desc';
 
 const REASON_OPTIONS = ['Sales', 'IT', 'Test', 'Other'] as const;
+const DEFAULT_REASON = 'Sales';
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
@@ -291,17 +292,19 @@ export default function TicketsManagementTable({ filters }: Props) {
   const [loading, setLoading] = useState(true);
   const [showExcluded, setShowExcluded] = useState(false);
 
-  // PENDING CHANGES — local-only until the user clicks Save.
-  const [pendingExclude,   setPendingExclude]   = useState<Set<number>>(new Set());
+  // PENDING state — local-only until Save.
+  //   pendingExclude: ticketId → chosen reason (per-row)
+  //   pendingUnexclude: ticketIds that should drop off the exclusion list
+  const [pendingExclude,   setPendingExclude]   = useState<Map<number, string>>(new Map());
   const [pendingUnexclude, setPendingUnexclude] = useState<Set<number>>(new Set());
 
-  // Reason picker for the pending excludes
-  const [reasonValue, setReasonValue] = useState<string>('Sales');
-  const [reasonOther, setReasonOther] = useState<string>('');
+  // Remember the last reason the user picked, so new exclusions default
+  // to that. Saves clicks when ticking many rows of the same kind.
+  const [lastReason, setLastReason] = useState<string>(DEFAULT_REASON);
 
   const [saving, setSaving] = useState(false);
 
-  // Sort + filter state (unchanged from previous version)
+  // Sort + filter state
   const [sort, setSort] = useState<{ key: ColKey; dir: SortDir } | null>(
     { key: 'createdTime', dir: 'desc' },
   );
@@ -313,7 +316,6 @@ export default function TicketsManagementTable({ filters }: Props) {
   const [openColumn, setOpenColumn] = useState<ColKey | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Click outside closes any open dropdown
   useEffect(() => {
     if (!openColumn) return;
     function handler(e: MouseEvent) {
@@ -349,14 +351,11 @@ export default function TicketsManagementTable({ filters }: Props) {
 
   // ── Pending state helpers ──────────────────────────────────────────
   const totalPending = pendingExclude.size + pendingUnexclude.size;
-  const hasExcludesPending = pendingExclude.size > 0;
 
   function effectiveExcluded(t: TicketRow): boolean {
-    // Visual state = server state XOR pending toggle
     if (t.isExcluded) return !pendingUnexclude.has(t.ticketId);
     return pendingExclude.has(t.ticketId);
   }
-
   function rowIsPending(t: TicketRow): boolean {
     return pendingExclude.has(t.ticketId) || pendingUnexclude.has(t.ticketId);
   }
@@ -371,16 +370,28 @@ export default function TicketsManagementTable({ filters }: Props) {
       });
     } else {
       setPendingExclude(prev => {
-        const next = new Set(prev);
-        if (next.has(t.ticketId)) next.delete(t.ticketId);
-        else next.add(t.ticketId);
+        const next = new Map(prev);
+        if (next.has(t.ticketId)) {
+          next.delete(t.ticketId);
+        } else {
+          next.set(t.ticketId, lastReason);
+        }
         return next;
       });
     }
   }
 
+  function setPendingReason(ticketId: number, reason: string) {
+    setPendingExclude(prev => {
+      const next = new Map(prev);
+      if (next.has(ticketId)) next.set(ticketId, reason);
+      return next;
+    });
+    setLastReason(reason);
+  }
+
   function discardPending() {
-    setPendingExclude(new Set());
+    setPendingExclude(new Map());
     setPendingUnexclude(new Set());
   }
 
@@ -388,13 +399,22 @@ export default function TicketsManagementTable({ filters }: Props) {
     if (totalPending === 0) return;
     setSaving(true);
     try {
-      const reason = reasonValue === 'Other' ? (reasonOther.trim() || 'Other') : reasonValue;
+      // Group pending excludes by reason so we can send one POST per
+      // distinct reason (server endpoint takes a single reason per call).
+      const byReason = new Map<string, number[]>();
+      pendingExclude.forEach((reason, ticketId) => {
+        const cleaned = reason.trim() || 'Other';
+        const arr = byReason.get(cleaned) ?? [];
+        arr.push(ticketId);
+        byReason.set(cleaned, arr);
+      });
+
       const promises: Promise<any>[] = [];
-      if (pendingExclude.size > 0) {
+      for (const [reason, ticketIds] of byReason) {
         promises.push(fetch('/api/helpdesk/exclusions', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ ticketIds: Array.from(pendingExclude), reason }),
+          body: JSON.stringify({ ticketIds, reason }),
         }));
       }
       if (pendingUnexclude.size > 0) {
@@ -405,11 +425,11 @@ export default function TicketsManagementTable({ filters }: Props) {
         }));
       }
 
-      // Optimistic update — flip the affected rows immediately so the
-      // table doesn't blink while the refetch is in flight.
+      // Optimistic update — flip rows locally before the refetch.
       setRows(prev => prev.map(r => {
-        if (pendingExclude.has(r.ticketId)) {
-          return { ...r, isExcluded: true, excludeReason: reason };
+        const pendingReason = pendingExclude.get(r.ticketId);
+        if (pendingReason !== undefined) {
+          return { ...r, isExcluded: true, excludeReason: pendingReason };
         }
         if (pendingUnexclude.has(r.ticketId)) {
           return { ...r, isExcluded: false, excludeReason: null };
@@ -417,13 +437,11 @@ export default function TicketsManagementTable({ filters }: Props) {
         return r;
       }));
 
-      // Clear pending immediately — server confirmation will come via refetch.
-      setPendingExclude(new Set());
+      setPendingExclude(new Map());
       setPendingUnexclude(new Set());
 
       await Promise.all(promises);
-      // Quiet refetch (no spinner) to reconcile with server truth.
-      fetchRows(false);
+      fetchRows(false);   // quiet refetch — no spinner
     } finally {
       setSaving(false);
     }
@@ -492,9 +510,62 @@ export default function TicketsManagementTable({ filters }: Props) {
     });
   }
 
+  // ── Per-row Reason cell renderer ───────────────────────────────────
+  function ReasonCell({ t }: { t: TicketRow }) {
+    const pendingReason = pendingExclude.get(t.ticketId);
+    const isPendingUnexclude = pendingUnexclude.has(t.ticketId);
+
+    // Row is pending an EXCLUDE — show inline reason editor.
+    if (pendingReason !== undefined) {
+      const isStandard = (REASON_OPTIONS as readonly string[]).includes(pendingReason);
+      return (
+        <div className="flex items-center gap-1">
+          <select
+            value={isStandard ? pendingReason : 'Other'}
+            onChange={e => {
+              const next = e.target.value;
+              if (next === 'Other' && !isStandard) {
+                // Keep existing custom value when switching back to Other
+                setPendingReason(t.ticketId, pendingReason);
+              } else {
+                setPendingReason(t.ticketId, next);
+              }
+            }}
+            className="text-xs border border-amber-300 bg-white rounded px-1.5 py-0.5 focus:outline-none focus:border-[#1e3a5f]"
+            disabled={saving}
+          >
+            {REASON_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+          {!isStandard || (isStandard && pendingReason === 'Other') ? (
+            <input
+              type="text"
+              value={isStandard ? '' : pendingReason}
+              onChange={e => setPendingReason(t.ticketId, e.target.value || 'Other')}
+              placeholder="Custom…"
+              className="text-[11px] border border-amber-300 rounded px-1.5 py-0.5 w-24 focus:outline-none focus:border-[#1e3a5f]"
+              disabled={saving}
+            />
+          ) : null}
+        </div>
+      );
+    }
+
+    // Row is pending an UN-exclude — show old reason, struck through.
+    if (isPendingUnexclude) {
+      return (
+        <span className="text-[11px] text-gray-400 line-through">
+          {t.excludeReason ?? ''}
+        </span>
+      );
+    }
+
+    // No pending change — show server reason (or empty).
+    return <span className="text-[11px]">{t.excludeReason ?? ''}</span>;
+  }
+
   return (
     <div className="bg-white border border-gray-200 rounded-md" ref={containerRef}>
-      {/* Header strip — info + pending action bar + sort/filter clear + show-excluded */}
+      {/* Header strip */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="text-[10px] uppercase font-semibold tracking-[0.6px] text-gray-500">
@@ -506,30 +577,14 @@ export default function TicketsManagementTable({ filters }: Props) {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Reason picker (only relevant if there are pending excludes) */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">Reason</label>
-            <select
-              value={reasonValue}
-              onChange={e => setReasonValue(e.target.value)}
-              disabled={!hasExcludesPending || saving}
-              className="text-xs border border-gray-200 rounded px-2 py-1 bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-[#1e3a5f]"
-            >
-              {REASON_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-            {reasonValue === 'Other' && hasExcludesPending && (
-              <input
-                type="text"
-                value={reasonOther}
-                onChange={e => setReasonOther(e.target.value)}
-                placeholder="Custom…"
-                disabled={saving}
-                className="text-xs border border-gray-200 rounded px-2 py-1 w-32 focus:outline-none focus:border-[#1e3a5f] disabled:bg-gray-50"
-              />
-            )}
-          </div>
+          {totalPending > 0 && (
+            <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
+              {pendingExclude.size > 0 && `${pendingExclude.size} to exclude`}
+              {pendingExclude.size > 0 && pendingUnexclude.size > 0 && ' · '}
+              {pendingUnexclude.size > 0 && `${pendingUnexclude.size} to un-exclude`}
+            </span>
+          )}
 
-          {/* Discard pending */}
           {totalPending > 0 && (
             <button
               onClick={discardPending}
@@ -540,7 +595,6 @@ export default function TicketsManagementTable({ filters }: Props) {
             </button>
           )}
 
-          {/* Save */}
           <button
             onClick={savePending}
             disabled={totalPending === 0 || saving}
@@ -549,11 +603,6 @@ export default function TicketsManagementTable({ filters }: Props) {
                 ? 'text-white bg-[#1e3a5f] hover:bg-[#16304f]'
                 : 'text-gray-400 bg-gray-100 cursor-not-allowed'
             } disabled:opacity-60`}
-            title={
-              totalPending === 0
-                ? 'No pending changes'
-                : `Save ${pendingExclude.size} excludes${pendingUnexclude.size > 0 ? ` + ${pendingUnexclude.size} un-excludes` : ''}`
-            }
           >
             {saving ? 'Saving…' : `Save${totalPending > 0 ? ` (${totalPending})` : ''}`}
           </button>
@@ -699,12 +748,14 @@ export default function TicketsManagementTable({ filters }: Props) {
                         pending
                           ? (t.isExcluded
                               ? 'Pending un-exclude — click Save to commit'
-                              : 'Pending exclude — click Save to commit')
+                              : 'Pending exclude — pick reason in next cell, then Save')
                           : (t.isExcluded ? 'Currently excluded' : 'Mark as junk / non-R&M')
                       }
                     />
                   </td>
-                  <td className="px-2 py-1.5 text-[11px]">{t.excludeReason ?? ''}</td>
+                  <td className="px-2 py-1.5">
+                    <ReasonCell t={t} />
+                  </td>
                 </tr>
               );
             })}
