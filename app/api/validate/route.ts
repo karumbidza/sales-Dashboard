@@ -542,8 +542,13 @@ async function validateHelpdesk(req: NextRequest): Promise<NextResponse> {
       addCheck('parseable', SHEET, 'Rows parseable for ingest', 'pass',
         `All ${rows.length} rows parse cleanly`);
     } else {
-      const ratio = rows.length > 0 ? totalSkipped / rows.length : 0;
-      const status: Check['status'] = ratio >= 0.05 ? 'error' : 'warning';
+      // Distinguish "hard" failures (format / parser bug — block ingest)
+      // from "soft" filters (content-level rejections we *want* to happen,
+      // like non-site tickets). Only hard failures escalate to error.
+      const HARD: HelpdeskParseReason[] = ['missing_ticket_id', 'bad_created_time'];
+      const hardSkipped = skipped.filter(s => HARD.includes(s.reason)).length;
+      const hardRatio   = rows.length > 0 ? hardSkipped / rows.length : 0;
+      const status: Check['status'] = hardRatio >= 0.05 ? 'error' : 'warning';
       // For each skip reason, surface a single concrete example value so
       // it's obvious what shape the bad data has (e.g. an unexpected
       // date format). Maps reason → which column to sample.
