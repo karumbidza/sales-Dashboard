@@ -40,7 +40,7 @@ type ColKey =
   | 'ticketId' | 'site' | 'subject' | 'status' | 'priority' | 'createdTime' | 'excludeReason';
 type SortDir = 'asc' | 'desc';
 
-const REASON_OPTIONS = ['Sales', 'IT', 'Test', 'Other'] as const;
+const REASON_OPTIONS = ['Sales', 'IT', 'Incident report', 'HSSE', 'Test', 'Other'] as const;
 const DEFAULT_REASON = 'Sales';
 
 function fmtDate(iso: string | null): string {
