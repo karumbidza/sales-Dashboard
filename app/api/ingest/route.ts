@@ -957,9 +957,20 @@ async function ingestHelpdesk(body: any): Promise<NextResponse> {
     const knownSites = await query<{ site_code: string }>('SELECT site_code FROM sites');
     const known = new Set(knownSites.map(r => r.site_code));
 
+    // De-duplicate by ticket_id BEFORE bulk insert. Freshdesk exports
+    // occasionally repeat the same ticket_id when activity (status
+    // changes, time entries) accumulates — and Postgres' ON CONFLICT
+    // DO UPDATE refuses to touch the same row twice in one statement.
+    // Strategy: keep the LAST occurrence per ticket_id, since later
+    // rows in a Freshdesk dump generally reflect the most recent state.
+    const byTicketId = new Map<number, typeof parsed[number]>();
+    for (const r of parsed) byTicketId.set(r.ticket_id, r);
+    const deduped = Array.from(byTicketId.values());
+    const duplicatesDropped = parsed.length - deduped.length;
+
     const matched: any[][] = [];
     const unmatched: any[][] = [];
-    for (const r of parsed) {
+    for (const r of deduped) {
       if (known.has(r.site_code)) {
         matched.push([
           r.ticket_id, r.site_code, r.subject, r.status, r.priority,
@@ -1053,6 +1064,7 @@ async function ingestHelpdesk(body: any): Promise<NextResponse> {
       upserted,
       unmatched: unmatched.length,
       skipped: skipped.length,
+      duplicates_dropped: duplicatesDropped,
       skipped_reasons: skipped.reduce<Record<string, number>>((acc, s) => {
         acc[s.reason] = (acc[s.reason] || 0) + 1; return acc;
       }, {}),
