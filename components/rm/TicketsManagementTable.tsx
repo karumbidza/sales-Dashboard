@@ -42,6 +42,7 @@ type SortDir = 'asc' | 'desc';
 
 const REASON_OPTIONS = ['Sales', 'IT', 'Incident report', 'HSSE', 'Test', 'Other'] as const;
 const DEFAULT_REASON = 'Sales';
+const PAGE_SIZE = 30;
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
@@ -314,7 +315,12 @@ export default function TicketsManagementTable({ filters }: Props) {
     createdTime: new Set(), excludeReason: new Set(),
   });
   const [openColumn, setOpenColumn] = useState<ColKey | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Reset pagination whenever filters / sort / underlying rows change.
+  // Otherwise the user might end up on page 9 when only 2 rows match.
+  useEffect(() => { setCurrentPage(0); }, [filterSets, sort, showExcluded]);
 
   useEffect(() => {
     if (!openColumn) return;
@@ -492,6 +498,13 @@ export default function TicketsManagementTable({ filters }: Props) {
     () => FILTERABLE.filter(k => filterSets[k].size > 0).length,
     [filterSets],
   );
+
+  // Pagination — client-side slice of the already-sorted+filtered rows.
+  const totalPages = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
+  const safePage   = Math.min(currentPage, totalPages - 1);
+  const pageStart  = safePage * PAGE_SIZE;
+  const pageEnd    = Math.min(pageStart + PAGE_SIZE, visibleRows.length);
+  const pageRows   = visibleRows.slice(pageStart, pageEnd);
 
   function setColumnSort(key: ColKey, dir: SortDir) {
     setSort({ key, dir });
@@ -717,7 +730,7 @@ export default function TicketsManagementTable({ filters }: Props) {
             {!loading && visibleRows.length === 0 && rows.length > 0 && (
               <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400 text-xs">No rows match the active filters</td></tr>
             )}
-            {!loading && visibleRows.map(t => {
+            {!loading && pageRows.map(t => {
               const eff = effectiveExcluded(t);
               const pending = rowIsPending(t);
               const rowCls = pending
@@ -762,6 +775,53 @@ export default function TicketsManagementTable({ filters }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination footer */}
+      {!loading && visibleRows.length > 0 && (
+        <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200 text-xs">
+          <div className="text-gray-500">
+            Showing {pageStart + 1}–{pageEnd} of {visibleRows.length}
+            {activeFilterCount > 0 && <span className="text-gray-400"> (filtered from {rows.length})</span>}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(0)}
+              disabled={safePage === 0}
+              className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent rounded"
+              aria-label="First page"
+            >
+              «
+            </button>
+            <button
+              onClick={() => setCurrentPage(Math.max(0, safePage - 1))}
+              disabled={safePage === 0}
+              className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent rounded"
+              aria-label="Previous page"
+            >
+              ‹ Prev
+            </button>
+            <span className="px-3 text-gray-700">
+              Page <span className="font-semibold">{safePage + 1}</span> of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, safePage + 1))}
+              disabled={safePage >= totalPages - 1}
+              className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent rounded"
+              aria-label="Next page"
+            >
+              Next ›
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages - 1)}
+              disabled={safePage >= totalPages - 1}
+              className="px-2 py-1 text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent rounded"
+              aria-label="Last page"
+            >
+              »
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
