@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
       ? `SELECT tk.site_code AS label_key,
                 COALESCE(s.budget_name, tk.site_code) AS label,
                 COUNT(*)::INT AS count
-           FROM rm_helpdesk_tickets tk
+           FROM rm_helpdesk_tickets_active tk
            JOIN sites s ON tk.site_code = s.site_code
            LEFT JOIN territories t ON s.territory_id = t.id
            LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       : `SELECT COALESCE(c.slug, 'uncategorized')        AS label_key,
                 COALESCE(c.display_name, 'Uncategorized') AS label,
                 COUNT(*)::INT                             AS count
-           FROM rm_helpdesk_tickets tk
+           FROM rm_helpdesk_tickets_active tk
            JOIN sites s ON tk.site_code = s.site_code
            LEFT JOIN territories t ON s.territory_id = t.id
            LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm

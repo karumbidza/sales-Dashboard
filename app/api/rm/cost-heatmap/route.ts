@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
          SELECT tk.site_code,
                 COALESCE(c.slug, 'uncategorized') AS category_slug,
                 COUNT(*)::INT                     AS ticket_count
-           FROM rm_helpdesk_tickets tk
+           FROM rm_helpdesk_tickets_active tk
            JOIN sites s ON tk.site_code = s.site_code
            LEFT JOIN territories t ON s.territory_id = t.id
            LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
               COALESCE(c.slug, 'uncategorized')          AS category_slug,
               COALESCE(c.display_name, 'Uncategorized')  AS category_name,
               COUNT(*)::INT                              AS ticket_count
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
       `SELECT tk.site_code,
               COALESCE(NULLIF(tk.status, ''), 'Unspecified') AS status,
               COUNT(*)::INT                                  AS ticket_count
-         FROM rm_helpdesk_tickets tk
+         FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
          LEFT JOIN rm_description_categories r ON tk.description_norm = r.description_norm
