@@ -28,8 +28,17 @@ export async function GET(req: NextRequest) {
     }
     const params: any[] = [];
     let p = 1;
-    if (dateFrom)    { clauses.push(`t.created_time::DATE >= $${p++}`); params.push(dateFrom); }
-    if (dateTo)      { clauses.push(`t.created_time::DATE <= $${p++}`); params.push(dateTo); }
+    // Date filter — matches KPI backlog semantics. Tickets created in the
+    // window OR tickets that are currently open (regardless of created
+    // date) are both visible. This way the manage table always covers
+    // the full backlog the KPIs count, even if some of it is older than
+    // the selected window.
+    const dateClauses: string[] = [];
+    if (dateFrom) { dateClauses.push(`t.created_time::DATE >= $${p++}`); params.push(dateFrom); }
+    if (dateTo)   { dateClauses.push(`t.created_time::DATE <= $${p++}`); params.push(dateTo); }
+    if (dateClauses.length > 0) {
+      clauses.push(`((${dateClauses.join(' AND ')}) OR t.status NOT IN ('Closed','Resolved'))`);
+    }
     if (priority)    { clauses.push(`t.priority = $${p++}`); params.push(priority); }
     if (status)      { clauses.push(`t.status = $${p++}`); params.push(status); }
     if (category)    { clauses.push(`c.slug = $${p++}`); params.push(category); }

@@ -5,16 +5,20 @@ import type { RMFilters } from './RMFilterBar';
 
 interface KpiData {
   openTickets:       { total: number; urgent: number };
-  noActionOpen?:     { value: number; vsLM: number };
+  noActionOpen?:     { value: number; vsLM: number; openCount?: number; pendingCount?: number };
   waitingThirdParty?:{ value: number; vsLM: number };
   mttr:              { days: number | null; priorMonthDays: number | null };
   slaHit:            { hitPct: number | null; breachCount: number };
   repeats:           { siteCount: number };
 }
 
-function Card({ label, value, subLine }: { label: string; value: string; subLine: React.ReactNode }) {
+function Card({ label, value, subLine, tooltip }: { label: string; value: string; subLine: React.ReactNode; tooltip?: string }) {
   return (
-    <div className="bg-gray-50 rounded-md p-3 flex flex-col gap-1" style={{ minHeight: 88 }}>
+    <div
+      className="bg-gray-50 rounded-md p-3 flex flex-col gap-1"
+      style={{ minHeight: 88 }}
+      title={tooltip}
+    >
       <div className="text-[10px] uppercase tracking-[0.3px] font-semibold text-gray-500">{label}</div>
       <div className="text-[19px] font-medium text-gray-900 leading-tight">{value}</div>
       <div className="text-[10px] text-gray-600">{subLine}</div>
@@ -86,12 +90,23 @@ export default function EfficiencyKpiStrip({ filters }: Props) {
       <Card
         label="No-Action Open"
         value={noActionValue.toString()}
+        tooltip={
+          data.noActionOpen?.openCount !== undefined
+            ? `Breakdown: ${data.noActionOpen.openCount} Open + ${data.noActionOpen.pendingCount ?? 0} Pending`
+            : undefined
+        }
         subLine={
-          noActionVsLM === 0
-            ? <span className="text-gray-500">unchanged vs LM</span>
-            : <span className={noActionVsLM > 0 ? 'text-[#b91c1c]' : 'text-[#15803d]'}>
-                {noActionVsLM > 0 ? '▲' : '▼'} {Math.abs(noActionVsLM)} vs LM
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {(data.noActionOpen?.openCount ?? 0)}+{(data.noActionOpen?.pendingCount ?? 0)}{' '}
+              <span className="text-gray-400">(Open · Pending)</span>
+            </span>
+            {noActionVsLM !== 0 && (
+              <span className={noActionVsLM > 0 ? 'text-[#b91c1c]' : 'text-[#15803d]'}>
+                {noActionVsLM > 0 ? '▲' : '▼'} {Math.abs(noActionVsLM)} LM
               </span>
+            )}
+          </div>
         }
       />
       <Card

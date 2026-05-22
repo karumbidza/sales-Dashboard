@@ -118,9 +118,12 @@ export async function GET(req: NextRequest) {
       [dateFrom, dateTo, siteCode, territory, category],
     );
 
-    // 1e. No-action open (status Open/Pending) — open AS OF dateTo
-    const [noActionRow] = await query<{ total: string }>(
-      `SELECT COUNT(*)::INT AS total
+    // 1e. No-action open (status Open/Pending) — open AS OF dateTo,
+    //     split by status so the UI can show "X Open + Y Pending".
+    const [noActionRow] = await query<{ total: string; open_n: string; pending_n: string }>(
+      `SELECT COUNT(*)::INT AS total,
+              COUNT(*) FILTER (WHERE tk.status = 'Open')::INT    AS open_n,
+              COUNT(*) FILTER (WHERE tk.status = 'Pending')::INT AS pending_n
          FROM rm_helpdesk_tickets_active tk
          JOIN sites s ON tk.site_code = s.site_code
          LEFT JOIN territories t ON s.territory_id = t.id
@@ -134,7 +137,9 @@ export async function GET(req: NextRequest) {
           AND ($4::TEXT = '' OR c.slug = $4)`,
       [dateTo, siteCode, territory, category],
     );
-    const noActionOpenCount = parseInt(noActionRow.total, 10);
+    const noActionOpenCount   = parseInt(noActionRow.total, 10);
+    const noActionOpenStatus  = parseInt(noActionRow.open_n, 10);
+    const noActionPendingStat = parseInt(noActionRow.pending_n, 10);
 
     // 1f. Same query, but anchored to one month prior — used for vsLM
     const [noActionPriorRow] = await query<{ total: string }>(
@@ -327,6 +332,8 @@ export async function GET(req: NextRequest) {
         },
         noActionOpen: {
           value: noActionOpenCount,
+          openCount:    noActionOpenStatus,
+          pendingCount: noActionPendingStat,
           vsLM:  noActionVsLM,
           oldestSites: unActionedRows.map((r, i) => ({
             rank: (i + 1) as 1 | 2 | 3,
