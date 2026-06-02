@@ -1480,7 +1480,7 @@ export async function POST(req: NextRequest) {
       ${breakdownTerritory}
       GROUP BY si.site_code, si.budget_name, si.moso, t.tm_name
       HAVING COALESCE(SUM(s.total_volume), 0) > 0
-      ORDER BY volume DESC
+      ORDER BY si.budget_name ASC
     `, breakdownParams);
 
     // Build HTML
