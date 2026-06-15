@@ -368,8 +368,8 @@ function buildReportHTML(data: any): string {
       `;
     }).join('');
 
-    // 5 cards: 3 columns (balanced 3+2). Otherwise use up to 4 across.
-    const cols = sorted.length === 5 ? 3 : Math.min(sorted.length, 4);
+    // Up to 5 cards: fit on one row. 6+ falls back to 4-wide grid.
+    const cols = sorted.length <= 5 ? sorted.length : 4;
     return `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px">${cards}</div>`;
   };
 
