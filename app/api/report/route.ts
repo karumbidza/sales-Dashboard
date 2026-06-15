@@ -255,11 +255,11 @@ function buildReportHTML(data: any): string {
       if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}K`;
       return Math.round(v).toLocaleString('en');
     };
-    // Only show key territories in the report
-  const REPORT_TERRITORIES = ['brendon', 'tendai', 'saliya', 'tafara'];
+    // Drop unassigned "?" buckets only; show every real territory.
   const filtered = terrs.filter(t => {
-    const name = String(t.territoryName || t.territoryCode || '').toLowerCase();
-    return REPORT_TERRITORIES.some(rt => name.includes(rt));
+    const code = String(t.territoryCode || '').trim();
+    const name = String(t.territoryName || '').trim();
+    return code !== '' || name !== '';
   });
   const sorted = [...(filtered.length > 0 ? filtered : terrs)].sort((a, b) => (Number(b.volume) || 0) - (Number(a.volume) || 0));
     const shortName = (t: any) =>
@@ -368,7 +368,9 @@ function buildReportHTML(data: any): string {
       `;
     }).join('');
 
-    return `<div style="display:grid;grid-template-columns:repeat(${Math.min(sorted.length, 4)},1fr);gap:8px">${cards}</div>`;
+    // 5 cards: 3 columns (balanced 3+2). Otherwise use up to 4 across.
+    const cols = sorted.length === 5 ? 3 : Math.min(sorted.length, 4);
+    return `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px">${cards}</div>`;
   };
 
   // ── Inline SVG: territory donut ────────────────────────────────────────

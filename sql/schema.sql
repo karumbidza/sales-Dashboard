@@ -402,7 +402,8 @@ INSERT INTO territories (tm_code, tm_name, region) VALUES
   ('BRENDON', 'Brendon''s Territory', 'Bulawayo'),
   ('TAFARA',  'Tafara''s Territory',  'Manicaland'),
   ('SALIYA',  'Saliya''s Territory',  'Harare'),
-  ('TENDAI',  'Tendai''s Territory',  'Mashonaland')
+  ('TENDAI',  'Tendai''s Territory',  'Mashonaland'),
+  ('MOLLY',   'Molly''s Territory',   NULL)
 ON CONFLICT (tm_code) DO NOTHING;
 
 -- ============================================================

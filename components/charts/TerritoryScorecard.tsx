@@ -198,8 +198,10 @@ export default function TerritoryScorecard({ data }: Props) {
     return <div className="text-center text-gray-300 text-sm py-12">No territory data</div>;
   }
   const sorted = [...data].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0));
+  // 5 cards: 3-col grid yields a balanced 3+2 layout; otherwise up to 4 across.
+  const xlCols = sorted.length === 5 ? 'xl:grid-cols-3' : 'xl:grid-cols-4';
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+    <div className={`grid grid-cols-1 sm:grid-cols-2 ${xlCols} gap-3`}>
       {sorted.map(t => (
         <ScoreCard key={t.territoryCode || t.territoryName} t={t} />
       ))}

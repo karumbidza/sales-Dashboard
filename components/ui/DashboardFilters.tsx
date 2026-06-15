@@ -10,6 +10,7 @@ const TERRITORIES = [
   { code: 'TAFARA',  label: "Tafara"  },
   { code: 'SALIYA',  label: "Saliya"  },
   { code: 'TENDAI',  label: "Tendai"  },
+  { code: 'MOLLY',   label: "Molly"   },
 ];
 
 const PRODUCTS = [

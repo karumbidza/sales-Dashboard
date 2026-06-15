@@ -184,7 +184,7 @@ function UploadAndHistory({ onSuccess }: { onSuccess: () => void }) {
 
 const SCHEMA: { table: string; sheet: string; sheetTone: string; rows: string; purpose: string }[] = [
   { table: 'sites',              sheet: 'NAME INDEX',    sheetTone: 'blue',  rows: '77',      purpose: 'Master site list — all datasets join here via site_code' },
-  { table: 'territories',        sheet: 'Seeded',        sheetTone: 'gray',  rows: '4',       purpose: 'Territory managers: Brendon, Tafara, Saliya, Tendai' },
+  { table: 'territories',        sheet: 'Seeded',        sheetTone: 'gray',  rows: '5',       purpose: 'Territory managers: Brendon, Tafara, Saliya, Tendai, Molly' },
   { table: 'sales',              sheet: 'STATUS REPORT', sheetTone: 'green', rows: '50K+',    purpose: 'Daily fuel sales — PRIMARY source of truth for all KPIs' },
   { table: 'volume_budget',      sheet: 'VOLUME BUDGET', sheetTone: 'blue',  rows: '900+',    purpose: 'Monthly budget & stretch targets per site, MOSO classification' },
   { table: 'petrotrade_sales',   sheet: 'PETROTRADE',    sheetTone: 'blue',  rows: '1K+',     purpose: 'Partner coupon volumes at fixed $0.05/L margin' },
